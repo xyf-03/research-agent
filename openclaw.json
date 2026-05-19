@@ -65,10 +65,39 @@
       "elevatedDefault": "full",
       "maxConcurrent": 4,
       "subagents": {
-        "maxConcurrent": 8
+        "maxConcurrent": 8,
+        "allowAgents": ["autoresearch"]
+      }
+    },
+    "list": [
+      {
+        "id": "main",
+        "name": "颖姗",
+        "default": true,
+        "workspace": "~/.openclaw/workspace"
+      },
+      {
+        "id": "autoresearch",
+        "name": "Autoresearch",
+        "workspace": "~/.openclaw/agents/autoresearch/workspace"
+      }
+    ]
+  },
+  "bindings": [
+    {
+      "agentId": "main",
+      "match": {
+        "channel": "feishu",
+        "accountId": "main"
+      }
+    },
+    {
+      "agentId": "main",
+      "match": {
+        "channel": "discord"
       }
     }
-  },
+  ],
   "messages": {
     "ackReactionScope": "group-mentions",
     "tts": {
@@ -224,7 +253,7 @@
           }
         ],
         "api": "anthropic-messages",
-        "authHeader": true,
+        "authHeader": true
       }
     }
   },
