@@ -33,9 +33,10 @@
 2. `paper-experiment-deep-extractor`
 3. `paper-review-style-problem-analyzer`
 4. `paper-validation-experiment-designer`
-5. `codex-validation-task-prompt-generator`
+5. `claude-code-validation-task-prompt-generator`
+6. `paper-pipeline-quality-auditor` — 对前五阶段产出做质量评估
 
-如果用户只需要某一个阶段，就只做该阶段，但要尽量保证输出能被后续阶段继续使用。
+如果用户只需要某一个阶段，就只做该阶段，但要尽量保证输出能被后续阶段继续使用。完整流程结束后，建议执行质量评估。
 
 ## 工作原则
 

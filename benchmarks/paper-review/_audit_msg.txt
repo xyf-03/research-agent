@@ -1,0 +1,23 @@
+Execute the paper-pipeline-quality-auditor skill.
+
+Audit these five files (all paths are absolute and exist):
+
+1. WIKI output (Skill 1):
+   E:\autoreserach\wiki\issues\MHKC_当前模块输入输出流程_上下游关系_问题总结.md
+
+2. EXPERIMENT extraction (Skill 2):
+   E:\autoreserach\wiki\issues\MHKC_面向开放环境的协同图表示学习方法研究_57_76_实验结果深化提取.md
+
+3. PROBLEM analysis (Skill 3):
+   E:\autoreserach\wiki\issues\MHKC_面向开放环境的协同图表示学习方法研究_57_76_问题分析_审稿式新版.md
+
+4. VALIDATION design (Skill 4):
+   E:\autoreserach\wiki\issues\MHKC_面向开放环境的协同图表示学习方法研究_57_76_验证实验设计.md
+
+5. CLAUDE CODE prompt (Skill 5):
+   E:\autoreserach\wiki\issues\MHKC_面向开放环境的协同图表示学习方法研究_57_76_验证实验代码实现.md
+
+STEP 1: Read ALL five files listed above.
+STEP 2: Check each against its Skill template (structure, fields, boundary, missing annotations, evidence grading, cross-stage consistency).
+STEP 3: Write the quality audit report to E:\autoreserach\wiki\issues\MHKC_quality_audit_report.md
+Do NOT skip any file. If a file cannot be read, note the error in the report.

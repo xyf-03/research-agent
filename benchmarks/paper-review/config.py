@@ -20,8 +20,7 @@ from pathlib import Path
 
 # ── Paths ──────────────────────────────────────────────────────────
 BENCHMARK_DIR = Path(__file__).resolve().parent
-WORKSPACE_DIR = BENCHMARK_DIR.parent                     # workspace/
-AGENT_DIR = WORKSPACE_DIR.parent                         # paper-review/
+REPO_ROOT = BENCHMARK_DIR.parent.parent                # repo root
 RESULTS_DIR = BENCHMARK_DIR / "results"
 SEED_FILE = BENCHMARK_DIR / "seed_qa.json"
 FULL_BENCHMARK_FILE = BENCHMARK_DIR / "full_benchmark.json"
@@ -106,7 +105,7 @@ def _find_deepseek_key() -> str:
 
     auth_files = [
         Path(r"E:\openclaw-data\.openclaw\agents\main\agent\auth-profiles.json"),
-        WORKSPACE_DIR.parent / "auth-profiles.json",
+        REPO_ROOT / "auth-profiles.json",
     ]
     for af in auth_files:
         if af.exists():
@@ -123,7 +122,7 @@ def _find_deepseek_key() -> str:
     raise RuntimeError("Cannot find DeepSeek API key. Set DEEPSEEK_API_KEY or add to auth-profiles.json.")
 
 DEEPSEEK_API_KEY = os.environ.get("DEEPSEEK_API_KEY") or _find_deepseek_key()
-print(f"[config] DeepSeek key: ...{DEEPSEEK_API_KEY[-8:]}")
+print("[config] DeepSeek key: found")
 
 def chat_llm(system: str, user: str, model: str = DEEPSEEK_MODEL, timeout: int = 120, max_tokens: int = 4096) -> str:
     resp = requests.post(DEEPSEEK_API_URL,

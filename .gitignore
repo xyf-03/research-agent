@@ -8,6 +8,9 @@ agents/*/agent/auth-state.json
 **/*.pem
 **/secrets*
 
+# === Binary/document assets (do not track) ===
+*.pdf
+
 # === Runtime data ===
 logs/
 tasks/
@@ -63,8 +66,8 @@ workspace-paper-review/memory/.dreams/
 workspace-paper-review/memory/dreaming/
 
 # === Benchmark runtime artifacts ===
-workspace-paper-review/benchmark/results/
-workspace-paper-review/benchmark/output/
+benchmarks/**/results/
+benchmarks/**/output/
 **/__pycache__/
 
 # === Sensitive user data ===
