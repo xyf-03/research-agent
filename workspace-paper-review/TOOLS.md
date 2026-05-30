@@ -10,8 +10,10 @@
 
 ## 工作区内技能
 
-- `paper-wiki-entry-organizer`
-- `paper-experiment-deep-extractor`
-- `paper-review-style-problem-analyzer`
-- `paper-validation-experiment-designer`
-- `codex-validation-task-prompt-generator`
+- `paper-experiment-deep-extractor`（S2）
+- `paper-review-style-problem-analyzer`（S3）
+- `paper-validation-experiment-designer`（S4）
+- `claude-code-validation-task-prompt-generator`（S5）
+- `paper-pipeline-quality-auditor`（S6）
+
+> Wiki 整理（`paper-wiki-entry-organizer`）由 `autoresearch` 子 agent 负责，不属于本 agent 的技能范围。
