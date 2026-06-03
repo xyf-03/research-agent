@@ -22,7 +22,7 @@ Read context in this order:
 
 1. User-provided files, folders, links, or pasted notes.
 2. Local `paper/` materials for the current run.
-3. Relevant research wiki pages, starting from `/workspace/shared/autoresearch-wiki/index.md` when available.
+3. Relevant research wiki pages, starting from `/workspace/shared/memory-wiki/index.md` when available.
 4. Paper-review outputs, including paper wiki entries, experiment extraction, problem analysis, and validation experiment design.
 5. Experiment logs, result tables, ablations, failed attempts, and qualitative observations.
 6. Repository files needed to understand implementation boundaries.

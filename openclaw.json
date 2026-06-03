@@ -64,7 +64,7 @@
         "workspaceAccess": "rw",
         "docker": {
           "binds": [
-            "/home/node/.openclaw/workspace-autoresearch/wiki:/workspace/shared/autoresearch-wiki:ro",
+            "/home/node/.openclaw/wiki/main:/workspace/shared/memory-wiki:ro",
             "/home/node/.openclaw/workspace-paper-review/outputs:/workspace/shared/paper-review-outputs:ro",
             "/home/node/.openclaw/workspace-idea-generate/idea-runs:/workspace/shared/idea-runs:ro"
           ]
@@ -212,7 +212,7 @@
       "memory-wiki": {
         "enabled": true,
         "config": {
-          "vaultMode": "bridge",
+          "vaultMode": "isolated",
           "vault": {
             "path": "~/.openclaw/wiki/main",
             "renderMode": "obsidian"
@@ -224,7 +224,7 @@
             "openAfterWrites": false
           },
           "bridge": {
-            "enabled": true,
+            "enabled": false,
             "readMemoryArtifacts": true,
             "indexDreamReports": true,
             "indexDailyNotes": true,
@@ -238,7 +238,7 @@
           },
           "search": {
             "backend": "shared",
-            "corpus": "all"
+            "corpus": "wiki"
           },
           "context": {
             "includeCompiledDigestPrompt": false

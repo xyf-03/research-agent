@@ -119,7 +119,7 @@ Read only the files needed for the current request, in this order:
 1. User-provided files, folders, links, or pasted notes.
 2. `paper/` folder via `scripts/build_paper_context_pack.py`, if present.
 3. Generated `paper-context.md`, if present.
-4. Relevant `/workspace/shared/autoresearch-wiki/` pages, starting from `wiki/index.md` when available.
+4. Relevant `/workspace/shared/memory-wiki/` pages, starting from `wiki/index.md` when available.
 5. Relevant `/workspace/shared/paper-review-outputs/` outputs, if the task depends on reviewed papers or extracted experiments.
 6. Experiment logs, result tables, ablations, failed attempts, or qualitative observations.
 7. Relevant `memory/` or `MEMORY.md` entries for recent discussion and failures, if present.

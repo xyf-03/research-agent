@@ -54,16 +54,16 @@ outputs/{论文简称}/{论文简称}-wiki.md
 autoresearch 子 agent 维护的 wiki 位于：
 
 ```
-/workspace/shared/autoresearch-wiki/
+/workspace/shared/memory-wiki/
 ```
 
-非沙箱环境可使用相对路径 `../workspace-autoresearch/wiki/`。
+非沙箱环境可使用相对路径 `~/.openclaw/wiki/main/`。
 
 具体查找方法：
 
-- **方法 A（推荐）：读索引** — 先读 `/workspace/shared/autoresearch-wiki/index.md`，在索引中搜索论文标题关键词，找到对应条目后根据链接定位到具体文件
-- **方法 B：按标题搜文件** — 在 `/workspace/shared/autoresearch-wiki/domains/` 下递归搜索 `.md` 文件，用论文标题中的关键词（如方法名、缩写、第一作者等）匹配文件名或文件内容
-- **方法 C：按领域推断** — 如果已知论文所属领域（如 federated-learning），直接进入 `/workspace/shared/autoresearch-wiki/domains/{domain}/papers/` 查找
+- **方法 A（推荐）：读索引** — 先读 `/workspace/shared/memory-wiki/index.md`，在索引中搜索论文标题关键词，找到对应条目后根据链接定位到具体文件
+- **方法 B：按标题搜文件** — 在 `/workspace/shared/memory-wiki/domains/` 下递归搜索 `.md` 文件，用论文标题中的关键词（如方法名、缩写、第一作者等）匹配文件名或文件内容
+- **方法 C：按领域推断** — 如果已知论文所属领域（如 federated-learning），直接进入 `/workspace/shared/memory-wiki/domains/{domain}/papers/` 查找
 
 **3. 如果仍未找到**
 
@@ -121,7 +121,7 @@ autoresearch 的 wiki 模板（Citation / Problem Setting / Method / Experiments
 
 **你的执行流程**：
 1. 识别目标阶段 = S3
-2. 第零步查找 Wiki：在 `/workspace/shared/autoresearch-wiki/index.md` 中找到 `fedgraph` 条目 → 定位到 `/workspace/shared/autoresearch-wiki/domains/federated-learning/papers/fedgraph-xxx.md`
+2. 第零步查找 Wiki：在 `/workspace/shared/memory-wiki/index.md` 中找到 `fedgraph` 条目 → 定位到 `/workspace/shared/memory-wiki/domains/federated-learning/papers/fedgraph-xxx.md`
 3. 检查前置：`fedgraph-experiment.md` 不存在
 4. 自动补齐：执行 S2（基于已有 Wiki + 论文原文生成 `fedgraph-experiment.md`）
 5. 执行 S3：基于 Wiki + S2 产出生成 `fedgraph-problem.md`
@@ -144,7 +144,7 @@ autoresearch 的 wiki 模板（Citation / Problem Setting / Method / Experiments
 
 ```
 Wiki 输入（来自 autoresearch 知识库）
-/workspace/shared/autoresearch-wiki/domains/{domain}/papers/{slug}.md
+/workspace/shared/memory-wiki/domains/{domain}/papers/{slug}.md
         │
         ▼
 ┌─────────────────────────────────┐
@@ -186,7 +186,7 @@ Wiki 输入（来自 autoresearch 知识库）
 
 | 维度 | 说明 |
 |------|------|
-| **来源** | `autoresearch` 子 agent 维护的知识库：`/workspace/shared/autoresearch-wiki/` |
+| **来源** | `autoresearch` 子 agent 维护的知识库：`/workspace/shared/memory-wiki/` |
 | **查找** | 见上方「第零步：查找已有 Wiki」 |
 | **格式** | autoresearch wiki 模板（Citation / Problem Setting / Method / Experiments / Results / Limitations / Reusable Claims 等） |
 | **缺失时** | 如有 PDF/URL 则直接读取论文原文作为替代输入；否则要求 main agent 先由 autoresearch 入库 |
@@ -259,7 +259,7 @@ sessions_spawn(
 
 ## 论文信息
 - 标题：{论文标题}
-- Wiki路径：{autoresearch wiki 中的路径，如 /workspace/shared/autoresearch-wiki/domains/federated-learning/papers/xxx.md}
+- Wiki路径：{autoresearch wiki 中的路径，如 /workspace/shared/memory-wiki/domains/federated-learning/papers/xxx.md}
 - PDF路径：{PDF文件绝对路径或URL，Wiki缺失时必填}
 - 代码仓库：{可选，本地绝对路径}
 
@@ -274,7 +274,7 @@ workspace 下的 `outputs/{论文简称}/` 目录。
 - {论文简称}-codex-prompt.md
 
 注意：Wiki 条目由 autoresearch 子 agent 维护，不需要重新整理。
-如果 Wiki 路径未提供，请在 /workspace/shared/autoresearch-wiki/ 中自动搜索。
+如果 Wiki 路径未提供，请在 /workspace/shared/memory-wiki/ 中自动搜索。
 全流程完成后，建议自动执行 S6 质量评估。""",
   mode: "run",
   runTimeoutSeconds: 3600
@@ -348,7 +348,7 @@ sessions_spawn(
 | 约定 | 说明 |
 |------|------|
 | **Wiki 来源** | 优先使用 autoresearch 知识库中的 wiki；main agent 应尽量传递 wiki 路径 |
-| **Wiki 查找** | 若未提供 wiki 路径，本 agent 会在 `/workspace/shared/autoresearch-wiki/` 中自动搜索 |
+| **Wiki 查找** | 若未提供 wiki 路径，本 agent 会在 `/workspace/shared/memory-wiki/` 中自动搜索 |
 | **PDF 路径** | Wiki 缺失时的兜底方案；必须是 Gateway 可访问的绝对路径或可公网访问的 URL |
 | **代码仓库** | 只在 S5 需要；如果无仓库，S5 生成通用框架性提示词 |
 | **输出位置** | 默认输出到 `outputs/{论文简称}/` 目录 |
@@ -361,7 +361,7 @@ sessions_spawn(
 
 如果用户要完整流程，优先按下面顺序推进：
 
-1. **查找 Wiki** — 在 `/workspace/shared/autoresearch-wiki/` 中定位论文的 wiki 条目
+1. **查找 Wiki** — 在 `/workspace/shared/memory-wiki/` 中定位论文的 wiki 条目
 2. `paper-experiment-deep-extractor` — S2
 3. `paper-review-style-problem-analyzer` — S3
 4. `paper-validation-experiment-designer` — S4

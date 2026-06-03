@@ -70,8 +70,8 @@
 
 ### 第一步：查本地 Wiki
 
-1. **读索引** — 读取 `/workspace/shared/autoresearch-wiki/index.md`（非沙箱环境可用 `../workspace-autoresearch/wiki/index.md`），搜索与用户问题相关的论文、方法、领域关键词。
-2. **定位相关页面** — 根据索引中的链接，读取 `/workspace/shared/autoresearch-wiki/domains/` 下的相关论文页、方法页、比较页等。
+1. **读索引** — 读取 `/workspace/shared/memory-wiki/index.md`（非沙箱环境可用 `~/.openclaw/wiki/main/index.md`），搜索与用户问题相关的论文、方法、领域关键词。
+2. **定位相关页面** — 根据索引中的链接，读取 `/workspace/shared/memory-wiki/domains/` 下的相关论文页、方法页、比较页等。
 3. **提取关键信息** — 从 wiki 页面中提取与用户问题直接相关的内容（实验数据、方法描述、已有分析结论等）。
 
 ### 第二步：Wiki 不足时使用浏览器
@@ -123,7 +123,7 @@ sessions_spawn(
 
 ## 论文信息
 - 标题：{用户提供的论文标题}
-- Wiki路径：{/workspace/shared/autoresearch-wiki/domains/{domain}/papers/{slug}.md，未找到则写"未找到，请在autoresearch知识库中搜索"}
+- Wiki路径：{/workspace/shared/memory-wiki/domains/{domain}/papers/{slug}.md，未找到则写"未找到，请在autoresearch知识库中搜索"}
 - PDF路径：{用户提供的PDF绝对路径或URL，Wiki缺失时必填}
 - 代码仓库：{可选，本地绝对路径}
 
