@@ -1,0 +1,73 @@
+{
+  "paper_id": "9vsRT9mc7U",
+  "paper_title": "Generative Adversarial Training for Neural Combinatorial Optimization Models",
+  "num_weaknesses": 11,
+  "human_weaknesses": [
+    {
+      "id": "W1",
+      "text": "Lack of Justification for GANCO's Core Contribution.** The necessity of using GANCO's adversarial entities is not clearly justified, lacking demonstration of its effectiveness over simple data augmentation techniques.",
+      "target": "Method",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W2",
+      "text": "Incomplete Baseline Comparisons.** More comprehensive baseline comparisons are suggested, including agents trained on multiple distributions and GANCO's curriculum critically evaluated in a different training setup.",
+      "target": "Experiment",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W3",
+      "text": "Missing Related Work Citation.** The approach shares similarities with PAIRED, which is not cited in the paper.",
+      "target": "Prior Research",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W4",
+      "text": "Concerns About Model Capacity.** Concerns are raised about the network's capacity to learn the input-to-optimal mapping due to suboptimal results compared to traditional solvers.",
+      "target": "Method",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W5",
+      "text": "Potential for Distribution Overfitting.** GANCO may lead to degenerated performance on the base distribution by forgetting the original distribution.",
+      "target": "Method",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W6",
+      "text": "Unoptimized Experimental Settings.** Unoptimized settings for traditional solvers like LKH-3 may affect runtime and performance claims.",
+      "target": "Experiment",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W7",
+      "text": "Insufficient Range of Experimentation.** Inclusion of more combinatorial problems beyond routing is suggested to support general applicability claims.",
+      "target": "Experiment",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W8",
+      "text": "Writing and Formatting Improvements Needed.** Specific writing and formatting improvements are needed, such as clarifying the objective function.",
+      "target": "Paper",
+      "aspect": "Communication Clarity"
+    },
+    {
+      "id": "W9",
+      "text": "Redundant Visual Element.** Figure 2 does not offer additional insights and its removal is suggested.",
+      "target": "Paper",
+      "aspect": "Communication Clarity"
+    },
+    {
+      "id": "W10",
+      "text": "Need for Ablation Studies.** There is a need for ablation studies to substantiate claims about the benefits of adversarial training.",
+      "target": "Experiment",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W11",
+      "text": "Concerns About Baseline Configuration.** Concerns about configuring LKH-3 for fair comparisons are noted.",
+      "target": "Experiment",
+      "aspect": "Validity"
+    }
+  ]
+}

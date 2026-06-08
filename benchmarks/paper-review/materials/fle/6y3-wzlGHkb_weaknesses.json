@@ -1,0 +1,67 @@
+{
+  "paper_id": "6y3-wzlGHkb",
+  "paper_title": "Non-robust Features through the Lens of Universal Perturbations",
+  "num_weaknesses": 10,
+  "human_weaknesses": [
+    {
+      "id": "W1",
+      "text": "Ambiguities in Definitions and Arguments** The study may draw conclusions based on experimental effects that could arise from experimental design flaws, such as reduced diversity in samples, rather than intrinsic properties of the features being studied.",
+      "target": "Experiment",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W2",
+      "text": "Lack of Precise Terminology** Several concepts remain in the hypothesis phase, lacking clear and precise definitions, reducing the clarity of the paper's new propositions.",
+      "target": "Theory",
+      "aspect": "Communication Clarity"
+    },
+    {
+      "id": "W3",
+      "text": "Limited Investigation of Hyperparameters** Differences in results from varying hyperparameters, like batch size, remain unexplained, contrary to expectations from existing literature.",
+      "target": "Experiment",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W4",
+      "text": "Conclusions Based on Insufficient Evidence** Some conclusions rely on indirect or insufficiently supported experimental results, needing stronger empirical validation.",
+      "target": "Conclusion",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W5",
+      "text": "Uncertainty of Work's Broader Impact** The applicability and interest of the findings beyond the specific domain of universal perturbations remain uncertain, limiting their broader impact.",
+      "target": "Overall Motivation",
+      "aspect": "Impact"
+    },
+    {
+      "id": "W6",
+      "text": "Risk of Over-Interpretation** The study assumes certain properties of adversarial perturbations without empirical support, risking over-interpretation.",
+      "target": "Theory",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W7",
+      "text": "Insufficient Quantification of Concepts** There is a lack of clear quantifiable measures for the terms used, like human-aligned properties and non-robust features, necessitating more rigorous definition.",
+      "target": "Theory",
+      "aspect": "Communication Clarity"
+    },
+    {
+      "id": "W8",
+      "text": "Need for In-Depth Analysis on Some Aspects** Certain areas require further exploration and depth of analysis, such as the consequences of certain configurations or settings on results.",
+      "target": "Experiment",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W9",
+      "text": "Insufficient Criteria for Universal Perturbations** A clear and measurable threshold for categorizing adversarial examples as universal is necessary but not explored sufficiently.",
+      "target": "Method",
+      "aspect": "Validity"
+    },
+    {
+      "id": "W10",
+      "text": "Potential Misattribution of Findings** Some findings, like spatial invariance, could be intrinsic to the nature of universal perturbations, thus not representing new discoveries.",
+      "target": "Theory",
+      "aspect": "Novelty"
+    }
+  ]
+}

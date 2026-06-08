@@ -1,0 +1,241 @@
+[
+  {
+    "qa_id": "fle-001",
+    "agent": "main",
+    "skill": "problem-analyzer",
+    "task_type": "s3-quality-fle",
+    "input_material": "请阅读 benchmark/materials/fle/t-hNmA0cVSW_fulltext.md 中的论文全文，然后对该论文进行审稿式问题分析。\n\n论文标题：Semi-supervised Counting via Pixel-by-pixel Density Distribution Modelling\n会议：ICLR 2023\nOpenReview：https://openreview.net/forum?id=t-hNmA0cVSW\n\n请基于论文内容，执行 paper-review-style-problem-analyzer skill，对论文的方法机制、实验支撑、贡献声明进行审稿式质疑，发现潜在问题、排序优先级、提炼研究空缺，输出完整的 6 个 section 问题分析文档。",
+    "question": "请执行 paper-review-style-problem-analyzer skill，对论文「Semi-supervised Counting via Pixel-by-pixel Density Distribution Modelling」(ICLR 2023)进行审稿式问题分析。请严格按 skill 模板输出完整的6个section：文档定位 / 方法机制与关键前提 / 核心贡献声明与审稿式质疑 / 潜在问题分析 / 验证候选问题与优先级 / 研究空缺方向与简短结论。",
+    "expected_artifacts": [
+      "workspace-paper-review/outputs/bench-<run>/fle-001.md"
+    ],
+    "gold_answer": {
+      "paper_title": "Semi-supervised Counting via Pixel-by-pixel Density Distribution Modelling",
+      "human_weaknesses": [
+        "Effectiveness of One-Hot Encoding Method:** Alternative explanation that the one-hot parametrization improves learnability. The adoption of predicting distributions over single values might merely reflect an alternative parametrization that enhances learnability and generalization rather than producing inherently less noisy predictions.",
+        "Potential Simplification of Loss Function:** Can the loss in (4) be simplified since one-hot encodings are used? The practical implications and potential simplification of Equation 4, considering the targets are consistently one-hot encoded, require further analysis and clarification.",
+        "Rationale for Transformer Architecture:** Needs justification for using transformer architecture. The paper's choice of employing a transformer architecture lacks adequate justification, both theoretically and empirically, prompting questions about its necessity compared to potentially simpler models like conv-nets.",
+        "Redundancy in Self-Attention Mechanism:** Can the first self-attention in the decoder be removed? There is speculation about the redundancy of the first self-attention mechanism within the decoder, given that it consistently receives the same token inputs, inviting exploration of alternative, less complex designs.",
+        "Insufficient Ablation Studies:** Missing ablation studies (ECR loss w/o mask, effect of w=0.5). The absence of thorough ablation studies examining the ECR loss's effectiveness without masking and the impact of parameter variations, such as setting ω=0.5, limits the depth and completeness of the empirical analysis presented.",
+        "Lack of Fully Supervised Results Comparison:** Should include fully supervised results. A comparative analysis of supervised losses should encompass fully-supervised scenarios to ensure robust evaluations, as the current 5% supervised setting might not adequately reflect the performance differences across methodologies.",
+        "Performance Discrepancies in Loss Functions:** Why are BL and DM loss worse than CE? The observed performance discrepancy where Bayesian and DM losses underperform relative to cross entropy prompts the need for deeper exploration into underlying causative factors behind these results.",
+        "Wasserstein Distance Usage with p=2:** The 1D closed form solution for Wasserstein distance used in the paper (with CDF instead of inverse CDF) requires p=1 (L1 norm). However, the paper also uses p=2, which achieves better results. The usage of p=2 instead of the theoretically justified p=1 raises questions about the legitimacy and implications of this modification on the results and theoretical underpinnings of the proposed methodology.",
+        "Lack of Discussion on Related Previous Work:** Previous work on using pixel-wise uncertainty for crowd counting. Recognition and discussion of prior work, particularly those leveraging pixel-wise uncertainty in crowd counting, are notably absent, which could shed light on similarities or inspirations influencing the current approach.",
+        "Dependency on Gaussian Kernels:** The intervals used depend on the Gaussian kernel, which makes it less reliable for other settings. The reliance on specific Gaussian kernels in interval determination highlights limitations in methodological generalizability, potentially affecting performance consistency across varied scenarios and settings.",
+        "Incorrect Representation of Wasserstein Distance in Equation 4:** Eq 4 is not the Wasserstein distance. The description of Equation 4 as a form of Wasserstein distance fails to capture the essence of true Wasserstein computations, which are optimization processes involving specific constraints and cannot be reduced to simple L2 norms.",
+        "Clarity on Unlabeled Image Utilization:** How to use the unlabeled images? The utilization and integration of unlabeled images within the semi-supervised framework lack clarity, necessitating detailed methodological exposition to understand their role and contribution to the proposed solution.",
+        "Lack of Initialization Strategy Examination:** Missing ablation study on the initialization method. Considering the purported efficacy of different initialization strategies for density tokens, the absence of related ablation studies leaves a gap in understanding the initialization's impact on performance outcomes.",
+        "Data Comparison Discrepancies in Results:** Results using 40% labeled data, but Meng et al used 50% labeled data. Discrepancies in the percentage of labeled data used between this work and cited references undermine the comparability and contextualization of methodological performance claims.",
+        "Omission of Recent Literature Comparisons:** Any new semi-supervised counting in 2022? By omitting comparisons with more recent literature from 2022, the paper might miss capturing the latest advances and benchmarks in semi-supervised crowd counting, limiting its contextual relevance.",
+        "Clarification Needed for Dual Branch Structure:** How does the interleaving dual branch structure work in semi-supervised learning? The paper's description of the interleaving dual branch structure necessitates an in-depth explanation to clarify its mechanics and efficacy in the semi-supervised learning process.",
+        "Lack of Explanation on Dual Structure Roles:** What's the difference between the two branches? More clarifications of Fig 1 needed. Further clarification on the differential roles and interactions between the two branches in Fig 1 is necessary to enhance understanding and alignment with the described methodology.",
+        "Insufficient Details on Density Levels Generation:** How are the density levels generated from the annotations? The manuscript falls short of providing sufficient detail on the process of deriving density levels from annotations, an integral component of the proposed method requiring transparent elucidation."
+      ],
+      "target_types": [
+        "Experiment",
+        "Method",
+        "Prior Research",
+        "Theory"
+      ],
+      "aspect_types": [
+        "Communication Clarity",
+        "Impact",
+        "Validity"
+      ]
+    },
+    "rubric": "你是一个严格的评测者。请对比 agent 输出的问题分析（CANDIDATE）和人类审稿人标注的 weakness 列表（REFERENCE），从以下维度打分：\n\n1. **召回率 (Recall - 40%)**：REFERENCE 中的每条人类审稿 weakness，CANDIDATE 是否发现（语义覆盖）？逐条判断：完全命中 / 部分命中 / 遗漏。计算 |命中| / |REFERENCE总数|。\n2. **准确率 (Precision - 40%)**：CANDIDATE 中的每个问题是否真实有效？逐条判断：明确有效 / 部分有效 / 无效或过度推断。计算 |有效| / |CANDIDATE总数|。\n3. **质疑类型覆盖 (Target/Aspect - 20%)**：CANDIDATE 发现的问题是否覆盖了 REFERENCE 中的 target 维度（Experiment, Method, Prior Research, Theory）和 aspect 维度（Communication Clarity, Impact, Validity）？\n\n综合评分 = 0.4 × Recall + 0.4 × Precision + 0.2 × 类型覆盖。\n\n输出 JSON：{\"score\": <0-1>, \"rationale\": \"<召回X/Y，准确X/Y，覆盖X/Y>\"}",
+    "rubric_dimensions": [
+      "recall",
+      "precision",
+      "target_aspect_match"
+    ],
+    "pass_threshold": 0.5,
+    "judge": "agent",
+    "weight": 1.0
+  },
+  {
+    "qa_id": "fle-002",
+    "agent": "main",
+    "skill": "problem-analyzer",
+    "task_type": "s3-quality-fle",
+    "input_material": "请阅读 benchmark/materials/fle/9vsRT9mc7U_fulltext.md 中的论文全文，然后对该论文进行审稿式问题分析。\n\n论文标题：Generative Adversarial Training for Neural Combinatorial Optimization Models\n会议：ICLR 2022\nOpenReview：https://openreview.net/forum?id=9vsRT9mc7U\n\n请基于论文内容，执行 paper-review-style-problem-analyzer skill，对论文的方法机制、实验支撑、贡献声明进行审稿式质疑，发现潜在问题、排序优先级、提炼研究空缺，输出完整的 6 个 section 问题分析文档。",
+    "question": "请执行 paper-review-style-problem-analyzer skill，对论文「Generative Adversarial Training for Neural Combinatorial Optimization Models」(ICLR 2022)进行审稿式问题分析。请严格按 skill 模板输出完整的6个section：文档定位 / 方法机制与关键前提 / 核心贡献声明与审稿式质疑 / 潜在问题分析 / 验证候选问题与优先级 / 研究空缺方向与简短结论。",
+    "expected_artifacts": [
+      "workspace-paper-review/outputs/bench-<run>/fle-002.md"
+    ],
+    "gold_answer": {
+      "paper_title": "Generative Adversarial Training for Neural Combinatorial Optimization Models",
+      "human_weaknesses": [
+        "Lack of Justification for GANCO's Core Contribution.** The necessity of using GANCO's adversarial entities is not clearly justified, lacking demonstration of its effectiveness over simple data augmentation techniques.",
+        "Incomplete Baseline Comparisons.** More comprehensive baseline comparisons are suggested, including agents trained on multiple distributions and GANCO's curriculum critically evaluated in a different training setup.",
+        "Missing Related Work Citation.** The approach shares similarities with PAIRED, which is not cited in the paper.",
+        "Concerns About Model Capacity.** Concerns are raised about the network's capacity to learn the input-to-optimal mapping due to suboptimal results compared to traditional solvers.",
+        "Potential for Distribution Overfitting.** GANCO may lead to degenerated performance on the base distribution by forgetting the original distribution.",
+        "Unoptimized Experimental Settings.** Unoptimized settings for traditional solvers like LKH-3 may affect runtime and performance claims.",
+        "Insufficient Range of Experimentation.** Inclusion of more combinatorial problems beyond routing is suggested to support general applicability claims.",
+        "Writing and Formatting Improvements Needed.** Specific writing and formatting improvements are needed, such as clarifying the objective function.",
+        "Redundant Visual Element.** Figure 2 does not offer additional insights and its removal is suggested.",
+        "Need for Ablation Studies.** There is a need for ablation studies to substantiate claims about the benefits of adversarial training.",
+        "Concerns About Baseline Configuration.** Concerns about configuring LKH-3 for fair comparisons are noted."
+      ],
+      "target_types": [
+        "Experiment",
+        "Method",
+        "Paper",
+        "Prior Research"
+      ],
+      "aspect_types": [
+        "Communication Clarity",
+        "Validity"
+      ]
+    },
+    "rubric": "你是一个严格的评测者。请对比 agent 输出的问题分析（CANDIDATE）和人类审稿人标注的 weakness 列表（REFERENCE），从以下维度打分：\n\n1. **召回率 (Recall - 40%)**：REFERENCE 中的每条人类审稿 weakness，CANDIDATE 是否发现（语义覆盖）？逐条判断：完全命中 / 部分命中 / 遗漏。计算 |命中| / |REFERENCE总数|。\n2. **准确率 (Precision - 40%)**：CANDIDATE 中的每个问题是否真实有效？逐条判断：明确有效 / 部分有效 / 无效或过度推断。计算 |有效| / |CANDIDATE总数|。\n3. **质疑类型覆盖 (Target/Aspect - 20%)**：CANDIDATE 发现的问题是否覆盖了 REFERENCE 中的 target 维度（Experiment, Method, Paper, Prior Research）和 aspect 维度（Communication Clarity, Validity）？\n\n综合评分 = 0.4 × Recall + 0.4 × Precision + 0.2 × 类型覆盖。\n\n输出 JSON：{\"score\": <0-1>, \"rationale\": \"<召回X/Y，准确X/Y，覆盖X/Y>\"}",
+    "rubric_dimensions": [
+      "recall",
+      "precision",
+      "target_aspect_match"
+    ],
+    "pass_threshold": 0.5,
+    "judge": "agent",
+    "weight": 1.0
+  },
+  {
+    "qa_id": "fle-003",
+    "agent": "main",
+    "skill": "problem-analyzer",
+    "task_type": "s3-quality-fle",
+    "input_material": "请阅读 benchmark/materials/fle/5ZWxBU9sYG_fulltext.md 中的论文全文，然后对该论文进行审稿式问题分析。\n\n论文标题：How to Craft Backdoors with Unlabeled Data Alone?\n会议：ICLR 2024\nOpenReview：https://openreview.net/forum?id=5ZWxBU9sYG\n\n请基于论文内容，执行 paper-review-style-problem-analyzer skill，对论文的方法机制、实验支撑、贡献声明进行审稿式质疑，发现潜在问题、排序优先级、提炼研究空缺，输出完整的 6 个 section 问题分析文档。",
+    "question": "请执行 paper-review-style-problem-analyzer skill，对论文「How to Craft Backdoors with Unlabeled Data Alone?」(ICLR 2024)进行审稿式问题分析。请严格按 skill 模板输出完整的6个section：文档定位 / 方法机制与关键前提 / 核心贡献声明与审稿式质疑 / 潜在问题分析 / 验证候选问题与优先级 / 研究空缺方向与简短结论。",
+    "expected_artifacts": [
+      "workspace-paper-review/outputs/bench-<run>/fle-003.md"
+    ],
+    "gold_answer": {
+      "paper_title": "How to Craft Backdoors with Unlabeled Data Alone?",
+      "human_weaknesses": [
+        "Lack of Relevant Citations.** Important references are missing. The manuscript does not cite several significant works addressing similar issues in backdoor attacks on SSL models, missing essential context for its contributions. It overlooks comparisons with established Trojan attacks against SSL and modern backdoor defense methods.",
+        "Insufficient Details on Execution and Measurement.** Details on the setting, algorithm, and evaluation are missing. The paper lacks clarity on how various constructs and metrics like BadNet or Blend triggers are implemented, or how mutual information calculations are related to eventual implementations. The methodology could be enhanced with further technical specifics that demonstrate how these concepts align with practical real-world settings.",
+        "Missing Analysis of Clustering Effects.** The interpretation of the results from clustering is missing. The paper could benefit from a thorough analysis of clustering results, providing insights into how different classes are selected or impacted by poison set strategies.",
+        "Misleading Terminology Regarding Attack Type.** It is misleading to call this attack backdoor attack, since typical backdoor attacks have target label and triggers. Traditional backdoor attacks have target labels and triggers, whereas this study lacks an explicit target label, aligning more with triggerless data poisoning attacks. This distinction needs to be drawn clearly upfront.",
+        "Needs Clarification on Experiment Goals.** There is no target label for this problem, so it is closer to triggerless data poisoning attack, just that there is actually trigger. The setup confuses traditional backdoor scenarios by incorporating triggers without a defined target label, necessitating clearer distinction from existing attack models.",
+        "Objective and Impact Need Early Clarification.** This should be made clear in the beginning of the paper. Clarity at the beginning would aid readers in understanding the foundational departures of this paper’s approach from typical backdoor attack paradigms.",
+        "Lack of Clear Objectives and Threat Assessment.** More fundamentally, this begs the question of what is the paper trying to achieve? The paper requires clear articulation of its overall objectives, quantifying the potential risk and defining what constitutes success or threat in its presented attack scenarios.",
+        "Unclear Attacker Intent at Inference.** It is not clear what the attacker's goal is at inference time. The practical utility or danger of executing such attacks under typical circumstances remains undefined, leaving tangible inferences about attacker gains or model malfunctions unarticulated.",
+        "Relevance of Metrics Is Unclear.** For example, if the attacker is the one who is adding the trigger at the inference time, why would anyone care about the Poison ACC (other than the adversary maybe). The relevance of demonstrated metrics like Poison ACC may be under question without context of broader attack impacts.",
+        "ASR Metric Questionable Without Target Labels.** Also, if there is no target label, why would anyone care about ASR? Attack Success Rate (ASR) is a less relevant metric here without the context of targeted class labeling, questioning its value in scenario evaluation."
+      ],
+      "target_types": [
+        "Experiment",
+        "Method",
+        "Overall Motivation",
+        "Prior Research"
+      ],
+      "aspect_types": [
+        "Communication Clarity",
+        "Validity"
+      ]
+    },
+    "rubric": "你是一个严格的评测者。请对比 agent 输出的问题分析（CANDIDATE）和人类审稿人标注的 weakness 列表（REFERENCE），从以下维度打分：\n\n1. **召回率 (Recall - 40%)**：REFERENCE 中的每条人类审稿 weakness，CANDIDATE 是否发现（语义覆盖）？逐条判断：完全命中 / 部分命中 / 遗漏。计算 |命中| / |REFERENCE总数|。\n2. **准确率 (Precision - 40%)**：CANDIDATE 中的每个问题是否真实有效？逐条判断：明确有效 / 部分有效 / 无效或过度推断。计算 |有效| / |CANDIDATE总数|。\n3. **质疑类型覆盖 (Target/Aspect - 20%)**：CANDIDATE 发现的问题是否覆盖了 REFERENCE 中的 target 维度（Experiment, Method, Overall Motivation, Prior Research）和 aspect 维度（Communication Clarity, Validity）？\n\n综合评分 = 0.4 × Recall + 0.4 × Precision + 0.2 × 类型覆盖。\n\n输出 JSON：{\"score\": <0-1>, \"rationale\": \"<召回X/Y，准确X/Y，覆盖X/Y>\"}",
+    "rubric_dimensions": [
+      "recall",
+      "precision",
+      "target_aspect_match"
+    ],
+    "pass_threshold": 0.5,
+    "judge": "agent",
+    "weight": 1.0
+  },
+  {
+    "qa_id": "fle-004",
+    "agent": "main",
+    "skill": "problem-analyzer",
+    "task_type": "s3-quality-fle",
+    "input_material": "请阅读 benchmark/materials/fle/6y3-wzlGHkb_fulltext.md 中的论文全文，然后对该论文进行审稿式问题分析。\n\n论文标题：Non-robust Features through the Lens of Universal Perturbations\n会议：ICLR 2021\nOpenReview：https://openreview.net/forum?id=6y3-wzlGHkb\n\n请基于论文内容，执行 paper-review-style-problem-analyzer skill，对论文的方法机制、实验支撑、贡献声明进行审稿式质疑，发现潜在问题、排序优先级、提炼研究空缺，输出完整的 6 个 section 问题分析文档。",
+    "question": "请执行 paper-review-style-problem-analyzer skill，对论文「Non-robust Features through the Lens of Universal Perturbations」(ICLR 2021)进行审稿式问题分析。请严格按 skill 模板输出完整的6个section：文档定位 / 方法机制与关键前提 / 核心贡献声明与审稿式质疑 / 潜在问题分析 / 验证候选问题与优先级 / 研究空缺方向与简短结论。",
+    "expected_artifacts": [
+      "workspace-paper-review/outputs/bench-<run>/fle-004.md"
+    ],
+    "gold_answer": {
+      "paper_title": "Non-robust Features through the Lens of Universal Perturbations",
+      "human_weaknesses": [
+        "Ambiguities in Definitions and Arguments** The study may draw conclusions based on experimental effects that could arise from experimental design flaws, such as reduced diversity in samples, rather than intrinsic properties of the features being studied.",
+        "Lack of Precise Terminology** Several concepts remain in the hypothesis phase, lacking clear and precise definitions, reducing the clarity of the paper's new propositions.",
+        "Limited Investigation of Hyperparameters** Differences in results from varying hyperparameters, like batch size, remain unexplained, contrary to expectations from existing literature.",
+        "Conclusions Based on Insufficient Evidence** Some conclusions rely on indirect or insufficiently supported experimental results, needing stronger empirical validation.",
+        "Uncertainty of Work's Broader Impact** The applicability and interest of the findings beyond the specific domain of universal perturbations remain uncertain, limiting their broader impact.",
+        "Risk of Over-Interpretation** The study assumes certain properties of adversarial perturbations without empirical support, risking over-interpretation.",
+        "Insufficient Quantification of Concepts** There is a lack of clear quantifiable measures for the terms used, like human-aligned properties and non-robust features, necessitating more rigorous definition.",
+        "Need for In-Depth Analysis on Some Aspects** Certain areas require further exploration and depth of analysis, such as the consequences of certain configurations or settings on results.",
+        "Insufficient Criteria for Universal Perturbations** A clear and measurable threshold for categorizing adversarial examples as universal is necessary but not explored sufficiently.",
+        "Potential Misattribution of Findings** Some findings, like spatial invariance, could be intrinsic to the nature of universal perturbations, thus not representing new discoveries."
+      ],
+      "target_types": [
+        "Conclusion",
+        "Experiment",
+        "Method",
+        "Overall Motivation",
+        "Theory"
+      ],
+      "aspect_types": [
+        "Communication Clarity",
+        "Impact",
+        "Novelty",
+        "Validity"
+      ]
+    },
+    "rubric": "你是一个严格的评测者。请对比 agent 输出的问题分析（CANDIDATE）和人类审稿人标注的 weakness 列表（REFERENCE），从以下维度打分：\n\n1. **召回率 (Recall - 40%)**：REFERENCE 中的每条人类审稿 weakness，CANDIDATE 是否发现（语义覆盖）？逐条判断：完全命中 / 部分命中 / 遗漏。计算 |命中| / |REFERENCE总数|。\n2. **准确率 (Precision - 40%)**：CANDIDATE 中的每个问题是否真实有效？逐条判断：明确有效 / 部分有效 / 无效或过度推断。计算 |有效| / |CANDIDATE总数|。\n3. **质疑类型覆盖 (Target/Aspect - 20%)**：CANDIDATE 发现的问题是否覆盖了 REFERENCE 中的 target 维度（Conclusion, Experiment, Method, Overall Motivation, Theory）和 aspect 维度（Communication Clarity, Impact, Novelty, Validity）？\n\n综合评分 = 0.4 × Recall + 0.4 × Precision + 0.2 × 类型覆盖。\n\n输出 JSON：{\"score\": <0-1>, \"rationale\": \"<召回X/Y，准确X/Y，覆盖X/Y>\"}",
+    "rubric_dimensions": [
+      "recall",
+      "precision",
+      "target_aspect_match"
+    ],
+    "pass_threshold": 0.5,
+    "judge": "agent",
+    "weight": 1.0
+  },
+  {
+    "qa_id": "fle-005",
+    "agent": "main",
+    "skill": "problem-analyzer",
+    "task_type": "s3-quality-fle",
+    "input_material": "请阅读 benchmark/materials/fle/P-gDXxGYCib_fulltext.md 中的论文全文，然后对该论文进行审稿式问题分析。\n\n论文标题：Feature Selection in the Contrastive Analysis Setting\n会议：ICLR 2022\nOpenReview：https://openreview.net/forum?id=P-gDXxGYCib\n\n请基于论文内容，执行 paper-review-style-problem-analyzer skill，对论文的方法机制、实验支撑、贡献声明进行审稿式质疑，发现潜在问题、排序优先级、提炼研究空缺，输出完整的 6 个 section 问题分析文档。",
+    "question": "请执行 paper-review-style-problem-analyzer skill，对论文「Feature Selection in the Contrastive Analysis Setting」(ICLR 2022)进行审稿式问题分析。请严格按 skill 模板输出完整的6个section：文档定位 / 方法机制与关键前提 / 核心贡献声明与审稿式质疑 / 潜在问题分析 / 验证候选问题与优先级 / 研究空缺方向与简短结论。",
+    "expected_artifacts": [
+      "workspace-paper-review/outputs/bench-<run>/fle-005.md"
+    ],
+    "gold_answer": {
+      "paper_title": "Feature Selection in the Contrastive Analysis Setting",
+      "human_weaknesses": [
+        "Questionable Novelty and Overlooked Literature** - The posed research problem lacks novelty. The paper overlooks established work in contrastive learning and disentanglement literature, reducing its perceived innovation. The necessity of this method over existing supervised approaches remains unclear.",
+        "Technical and Methodological Shortcomings*",
+        "Imprecise Framework Based on Auto-Encoders** - Insufficient informativeness of the framework based on the auto-encoder. The abstract definition of parameters and lack of engagement with modern ML practices are major drawbacks. Clarification on certain methodological points and framework complexities is needed.",
+        "Disconnected Pretraining Strategy** - Pretraining strategy does not utilize information from the target dataset, resulting in a disconnect. Pretraining lacks integration with target dataset specifics, leading to dissonance in application.",
+        "Issues with Joint Strategy and Performance** - The joint strategy has an issue with information leakage and inferior performance compared to other models. Information leakage reduces efficacy, with performance statistics suffering as a result.",
+        "Unclear Gates Strategy Objective** - Lack of clarity around the philosophy of the gates strategy. The strategic intention behind the gates methodology remains poorly explained.",
+        "Experimental Evaluation Considerations*",
+        "Limited Comparisons in Semi-Synthetic Experiments** - Only one supervised method is compared on the semi-synthetic dataset. Evaluation lacks depth, with a limited comparison against alternate methodologies.",
+        "Absence of Supervised Methods in Real-World Tests** - No results for supervised methods on real-world datasets. Absent application of supervised methods across practical datasets limits practical insight.",
+        "Lack of Diverse Performance Metrics** - No performance data based on varying numbers of selected features. A lack of diverse experimental reporting hampers comprehensive assessment."
+      ],
+      "target_types": [
+        "Experiment",
+        "Method",
+        "Prior Research"
+      ],
+      "aspect_types": [
+        "Communication Clarity",
+        "Impact",
+        "Novelty",
+        "Validity"
+      ]
+    },
+    "rubric": "你是一个严格的评测者。请对比 agent 输出的问题分析（CANDIDATE）和人类审稿人标注的 weakness 列表（REFERENCE），从以下维度打分：\n\n1. **召回率 (Recall - 40%)**：REFERENCE 中的每条人类审稿 weakness，CANDIDATE 是否发现（语义覆盖）？逐条判断：完全命中 / 部分命中 / 遗漏。计算 |命中| / |REFERENCE总数|。\n2. **准确率 (Precision - 40%)**：CANDIDATE 中的每个问题是否真实有效？逐条判断：明确有效 / 部分有效 / 无效或过度推断。计算 |有效| / |CANDIDATE总数|。\n3. **质疑类型覆盖 (Target/Aspect - 20%)**：CANDIDATE 发现的问题是否覆盖了 REFERENCE 中的 target 维度（Experiment, Method, Prior Research）和 aspect 维度（Communication Clarity, Impact, Novelty, Validity）？\n\n综合评分 = 0.4 × Recall + 0.4 × Precision + 0.2 × 类型覆盖。\n\n输出 JSON：{\"score\": <0-1>, \"rationale\": \"<召回X/Y，准确X/Y，覆盖X/Y>\"}",
+    "rubric_dimensions": [
+      "recall",
+      "precision",
+      "target_aspect_match"
+    ],
+    "pass_threshold": 0.5,
+    "judge": "agent",
+    "weight": 1.0
+  }
+]
