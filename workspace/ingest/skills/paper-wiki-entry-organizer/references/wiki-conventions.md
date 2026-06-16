@@ -90,35 +90,8 @@ Log 是追加式的，不要重写历史条目（除非用户要求）。
 - 评估设置不同时，先描述不匹配再比较结果
 - 基于 abstract-only 或 skimmed 证据的 claim 标注该限制
 
-## Subagent 配置（历史参考，当前 ingest 不 spawn 子 agent）
+## 注意事项
 
-> **注意：** 以下内容为历史设计参考。当前 ingest agent 不调用 `sessions_spawn`（见 TOOLS.md），所有任务在自身 session 内完成。产出通过 `wiki_apply` 写入 wiki vault，不写入文件系统。
-
-Paper ingest 使用 OpenClaw 的 sessions_spawn 机制。推荐配置：
-
-- delegationMode: prefer（配置层面强制子 agent 使用）
-- maxConcurrent: 8（允许 N 篇论文并行处理）
-- maxSpawnDepth: 2（允许 orchestrate 编排层派发 worker；worker 自身不能再 spawn）
-- context: isolated（每个子 agent 只需全文文件路径和模板指令）
-
-子 agent 在 depth 2 接收文件读写工具，但不接收 session 管理工具（sessions_spawn、sessions_list、sessions_history）。
-
-### 子 agent 委托模板
-
-为每篇论文 spawn 一个 isolated context 的子 agent，task 消息包含：
-
-- **全文路径**：raw/sources/ 下的提取文本文件
-- **输出路径**：目标 paper page 路径
-- **模板引用**：按 references/page-templates.md 中论文页结构填写
-- **要求**：
-  - 遵循 11 节论文页模板
-  - 填写所有 frontmatter 字段
-  - evidence_level 基于全文覆盖度设置（全文 PDF 提取 → full-paper）
-  - Experiments 必须包含数据集大小、baseline 名称、训练超参
-  - Results 必须包含每个 main claim 的具体数字
-  - 不用定性短语替代数字
-  - 缺失信息注明"not reported in the source"
-  - 页面正文用中文，保留原始标题和引用信息
-  - 完成后返回 "done" 和设置的 evidence_level
-
-一论文一子 agent，不批量。不自己读论文内容。
+- Ingest agent 不调用 `sessions_spawn`，所有任务在自身 session 内完成
+- 产出通过 `wiki_apply` 写入 wiki vault，不写入文件系统
+- 一论文一处理，不批量

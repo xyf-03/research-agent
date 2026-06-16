@@ -1,115 +1,54 @@
+---
+name: paper-ingest
+description: Two-stage pipeline to ingest a paper into the research wiki and verify quality. Ingest creates the wiki page, curate lints for consistency.
+---
+
 # paper-ingest
 
-## 概述 / Overview
+## 概述
 
-Two-stage pipeline to ingest a paper into the research wiki and verify quality: ingest creates the wiki page, curate lints for consistency. Trigger words: "入库", "ingest paper", "add to wiki", "文献笔记", "整理这篇论文".
+Two-stage pipeline to ingest a paper into the research wiki and verify quality: ingest creates the wiki page, curate lints for consistency.
 
-## 应用场景 / Scenario
+**触发词**: "入库", "ingest paper", "add to wiki", "文献笔记", "整理这篇论文"
 
-Add a paper (PDF or URL) to the research wiki. Produces a verified, linted wiki entry with correct metadata and evidence levels.
-
-## Subagent 调用链 / Agent Chain
+## Subagent 调用链
 
 1. **ingest** — PDF ingestion, text extraction, structured wiki page creation
 2. **curate** — Quality linting, metadata verification, cross-page consistency check
 
-## 编排步骤 / Orchestration Steps
+## 编排步骤
 
 ### Pre-check (main agent)
 
-1. Use `wiki_search` to check for existing entry. Skip if already present unless user requests re-ingest.
-2. Validate user provided a PDF path or URL. If neither, ask.
-3. Record paper metadata for downstream context.
+1. 使用 `wiki_search` 检查已有条目。如已存在且用户未要求重新入库则跳过。
+2. 验证用户提供了 PDF 路径或 URL。如都没有则询问。
+3. 记录论文元数据供下游使用。
 
-### Step 1: Spawn ingest
+### Step 1: 派发 ingest | Timeout: 1800s
 
-```
-sessions_spawn(
-  agentId: "ingest",
-  task: """将以下论文入库。
+任务：将论文入库。按 Capture → Extract → Create Paper Page → Update Index 流程处理。完成后汇报入库位置和 evidence_level。
 
-## 论文信息
-- 标题：{title}
-- PDF路径：{pdf_path_or_url}
-- 用户备注：{user_notes, if any}
+### Step 2: 派发 curate | Timeout: 600s
 
-## 执行要求
-按 Capture → Extract → Create Paper Page → Update Index 流程处理。
-完成后汇报入库位置和 evidence_level。""",
-  mode: "run",
-  runTimeoutSeconds: 1800
-)
-```
+ingest 完成后，派发 curate 对新入库页面执行质量检查：frontmatter 完整性、evidence_level 一致性、Results 具体数字、孤立链接、矛盾 claim、index 条目正确性。输出 lint report。
 
-Input: user-provided title, PDF/URL, optional notes. Output: wiki page path, evidence_level. Timeout: 1800s.
+### Step 3: 向用户汇报
 
-### Step 2: Spawn curate
+- **Curate 通过**: 汇报 wiki 路径、evidence_level、关键元数据。建议下一步（paper-review, idea-generate, cross-paper compare）。
+- **Curate 发现阻塞问题**: 向用户汇报问题，不自动重新派发 ingest。
 
-After ingest completes, before reporting to user:
-
-```
-sessions_spawn(
-  agentId: "curate",
-  task: """对新入库页面执行质量检查。
-
-## 目标页面
-{ingest output: wiki page path}
-
-## 检查范围
-1. frontmatter 完整性（title, authors, year, venue, evidence_level）
-2. evidence_level 与实际阅读深度一致
-3. Results 是否包含具体数字
-4. 孤立链接、矛盾 claim、index.md 条目正确性
-
-输出 lint report。不修改 raw sources。""",
-  mode: "run",
-  runTimeoutSeconds: 600
-)
-```
-
-Input: ingest inline reply. Output: lint report (pass/fail, findings). Timeout: 600s.
-
-### Step 3: Report to user
-
-- **Curate passes**: Report wiki path, evidence_level, key metadata. Suggest next steps (paper-review, idea-generate, cross-paper compare).
-- **Curate finds blocking issues**: Report issues to user. Do not auto-re-spawn ingest.
-
-### Error handling
+### 错误处理
 
 | Stage | Failure | Action |
 |-------|---------|--------|
-| ingest | PDF unreadable | Ask user for alternative source |
-| ingest | Extract insufficient | Suggest manual abstract entry |
-| curate | Blocking lint issues | Report to user, await instruction |
+| ingest | PDF 不可读 | 询问用户替代来源 |
+| ingest | 提取不充分 | 建议手动 abstract 录入 |
+| curate | 阻塞 lint 问题 | 汇报用户，等待指示 |
 
-### Quality gate
-
-The curate stage is the quality gate for this skill — no separate `reviewer` spawn. For stricter review (benchmark scoring), spawn `reviewer` separately.
-
-## 输入规范 / Input Specification
+## 输入规范
 
 | Field | Required | Description |
 |-------|----------|-------------|
 | PDF path or URL | Yes | Absolute path or accessible URL |
 | Title | Recommended | Extracted from PDF if omitted |
 | User notes | Optional | Focus areas or special instructions |
-
-## 输出规范 / Output Specification
-
-User receives:
-
-```
-✅ 论文已入库并通过质量检查
-📁 Wiki 页面：{path}
-📊 Evidence level：{level}
-🔍 Curate：{N} 项通过 / {M} 个建议
-💡 下一步：paper-review / idea-generate / curate compare
-```
-
-## 示例 / Examples
-
-**Example 1**: User: "帮我把 /workspace/raw/sources/2024-01-15-mhkc.pdf 入库"
-→ Pre-check (not in wiki) → spawn ingest (1800s) → page created → spawn curate (600s) → 0 blocking, 1 suggestion → report success.
-
-**Example 2**: User: "入库 https://arxiv.org/abs/2401.01234，重点看实验设计"
-→ Pre-check → spawn ingest with user note → page created → spawn curate → report, suggest paper-review for deeper experiment analysis.

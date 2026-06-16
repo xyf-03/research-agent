@@ -1,77 +1,47 @@
-## literature-query
+---
+name: literature-query
+description: Literature query and cross-paper comparison skill. Main agent delegates to curate to search, synthesize, and compare insights across papers in the wiki.
+---
 
-### 概述 / Overview
+# literature-query
+
+## 概述
 
 Literature query and cross-paper comparison skill. Main agent delegates to **curate** to search, synthesize, and compare insights across papers in the wiki.
 
-**Trigger words**: 文献查询, 对比论文, 跨论文比较, wiki里有没有, 查一下某篇论文, literature query, compare papers, cross-paper.
+**触发词**: "文献查询", "对比论文", "跨论文比较", "wiki里有没有", "查一下某篇论文", "literature query", "compare papers", "cross-paper"
 
-### 应用场景 / Scenario
-
-User wants to query, compare, or synthesize information across papers already in the wiki.
-
-- "对比这几篇论文的方法差异"
-- "Wiki 里有没有关于 XX 的内容"
-- "这几篇论文在 YY 数据集上表现如何"
-
-### Subagent 调用链 / Agent Chain
+## Subagent 调用链
 
 1. **curate** — Wiki curation, quality linting, cross-paper comparison, literature queries
 
-### 编排步骤 / Orchestration Steps
+## 编排步骤
 
-#### Step 1: 知识检索 (main agent)
+### Step 1: 知识检索 (main agent)
 
-1. Use `wiki_get` to read the wiki index, locate relevant pages.
-2. Extract key facts related to the user query.
-3. If wiki insufficient, use browser to supplement (arXiv, Google Scholar).
+1. 使用 `wiki_get` 读取 wiki 索引，定位相关页面。
+2. 提取与用户查询相关的关键事实。
+3. Wiki 不足时使用 browser 补充（arXiv, Google Scholar）。
 
-#### Step 2: 派发 curate
+### Step 2: 派发 curate | Timeout: 600s
 
-```
-sessions_spawn(
-  agentId: "curate",
-  task: """{query_type: "lint" | "compare" | "query"} on the following scope.
+任务：在指定范围内执行 `query_type: "lint" | "compare" | "query"`。包含目标论文/关键词、wiki 路径、用户原始问题、已读取 wiki 页面和关键事实摘要、网络补充来源。输出要求引用 page_id 或路径、标注 evidence_level、矛盾点明确标出。
 
-## 查询范围
-- 目标论文/关键词: {paper titles, keywords, or domain}
-- Wiki 路径: {relevant wiki page paths; "未找到" if none}
-- 对比维度: {methods / datasets / metrics / all; for compare mode}
+### Step 3: 质量审查
 
-## 用户问题
-{user's original question, verbatim}
+curate 产出完成后，派发 reviewer 验证（citations, evidence levels, completeness）。如果 FAIL，将修复提示发回 curate 重做。最多 2 轮修复。
 
-## 上下文
-- 已读取的 Wiki 页面: {path list; none if absent}
-- Wiki 关键事实摘要: {claims, experiments, results}
-- 网络补充来源: {URLs; none if absent}
+### Step 4: 结果汇报
 
-## 输出要求
-- 引用 page_id 或路径, 标注 evidence_level
-- 矛盾点明确标出, 数量化优于定性""",
-  mode: "run",
-  runTimeoutSeconds: 600
-)
-```
+向用户呈现审查通过的结果，附 page paths 和 evidence_level 标签。
 
-**Timeout**: 600s. Wiki read-only operations are fast.
+### 错误处理
 
-#### Step 3: Reviewer 质量门
+- **curate 超时**: 缩小范围重试一次；fallback 到带 caveat 的直接 wiki 回答。
+- **Wiki 为空**: 告知用户，建议先入库论文。
+- **reviewer FAIL**: 循环回 curate（最多 2 轮）；升级给用户。
 
-Route curate output through reviewer (runTimeoutSeconds: 300, context: "isolated").
-If FAIL, send fix prompt back to curate's original session via `sessions_send`. Re-review after fix.
-
-#### Step 4: 结果汇报
-
-Present reviewer-passed results with page paths and evidence_level labels.
-
-#### Error Handling
-
-- **curate timeout**: Retry once with narrower scope; fallback to direct wiki answer with caveat.
-- **Wiki empty**: Inform user, suggest ingesting papers first (autoresearch).
-- **reviewer FAIL**: Loop back to curate (max 2 rounds); escalate to user.
-
-### 输入规范 / Input Specification
+## 输入规范
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -79,29 +49,8 @@ Present reviewer-passed results with page paths and evidence_level labels.
 | papers | No | Paper titles, wiki paths, or keywords to scope |
 | dimensions | No | Comparison axes: methods, datasets, metrics, results |
 
-### 输出规范 / Output Specification
+## 输出规范
 
-- **Query mode**: Structured answer with citations, evidence levels, identified gaps.
-- **Compare mode**: Aligned table with evidence_level per row, contradictions flagged.
-- **Lint mode**: Dashboard of wiki quality issues by type, with fix suggestions.
-
-### 示例 / Examples
-
-**Example 1: Cross-paper comparison**
-
-User: "对比 MHKC 和 FedProx 在非 IID 场景下的收敛性"
-
-1. Main agent finds MHKC and FedProx pages in wiki.
-2. Spawns curate with `query_type: "compare"`, dimensions: methods + convergence.
-3. Reviewer verifies output references real pages and numbers match.
-4. User receives comparison table with evidence levels.
-
-**Example 2: Literature query**
-
-User: "Wiki 里有没有关于差分隐私在联邦学习中应用的内容"
-
-1. Main agent searches wiki for "差分隐私" + "联邦学习".
-2. Found → spawns curate with `query_type: "query"`.
-3. Not found → suggests ingesting papers first via autoresearch.
-4. Reviewer validates citations and evidence levels.
-5. User receives structured summary with page references.
+- **Query mode**: 结构化回答，带引用、证据等级、识别的缺口。
+- **Compare mode**: 对齐表格，每行带 evidence_level，矛盾标记。
+- **Lint mode**: Wiki 质量问题 dashboard，按类型分组，带修复建议。

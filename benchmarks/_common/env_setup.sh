@@ -231,7 +231,7 @@ bench_reapply_setup() {
   echo "[bench_reapply_setup] creating agent session dirs"
   bench_container_cli exec "${container}" bash -lc '
     set -e
-    for agent_id in main orchestrate ingest curate extract critic design spec audit ideate judge reviewer; do
+    for agent_id in main ingest curate extract critic design spec audit ideate judge reviewer; do
       mkdir -p "/home/node/.openclaw/agents/${agent_id}/sessions"
     done
   '

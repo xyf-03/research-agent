@@ -1,7 +1,7 @@
 # 对抗式审查：子Agent输出交付模式
 
 审查日期：2026-06-11
-审查范围：全部10个子agent（ingest, curate, extract, critic, design, spec, audit, ideate, judge, orchestrate）
+审查范围：全部9个子agent（ingest, curate, extract, critic, design, spec, audit, ideate, judge）
 
 ## 规则
 
@@ -83,12 +83,6 @@
 - **AGENTS.md 第53-66行：** 明确的输出格式规范（`VERDICT: PASS|FAIL|NEEDS_HUMAN_REVIEW`），全部 inline
 - **结论：** 合规。无文件系统产出。
 
-### orchestrate ✅ 合规
-
-- **产出方式：** 结构化汇总报告直接返回到 reply text
-- **AGENTS.md 第115-136行：** 明确的汇总报告模板，全部 inline
-- **结论：** 合规。无文件系统产出。
-
 ## 汇总
 
 | Agent | 状态 | 违规产出路径 | 修复优先级 |
@@ -102,9 +96,8 @@
 | **audit** | ❌ | `outputs/{slug}/{slug}-audit.md` | P0 |
 | **ideate** | ❌ | `idea-runs/YYYYMMDD-HHMMSS-<slug>/` | P1（脚本依赖复杂） |
 | judge | ✅ 合规 | - | - |
-| orchestrate | ✅ 合规 | - | - |
 
-**违规率：6/10 = 60%**
+**违规率：6/9 = 67%**
 
 ## 对抗性质疑与回应
 
@@ -122,7 +115,7 @@
 
 ### 质疑4："下游 stage 需要上游的完整产出，不写文件怎么传？"
 
-**回应：** orchestrate agent 拿到上游的 reply text 后，直接把它嵌入下游的 task 参数里。这正是 orchestrate AGENTS.md 里写的 "传递 main 提供的全部上下文，不截断" 和 "如果 worker 需要上游产出，把文件路径传下去"——只需把"文件路径"改为"上游 reply 内容"。
+**回应：** main agent 拿到上游的 reply text 后，直接把它嵌入下游的 task 参数里。不要传文件路径或 session key；下游 stage 需要的完整上下文应作为 task 内容传递。
 
 ## 修复计划
 
@@ -131,7 +124,7 @@
 每个 agent 改3处：
 1. **AGENTS.md** — 输出描述改为 "直接回复调用者，包含完整产出文档（Markdown）"
 2. **SKILL.md** — 输出模板保留，但去掉"保存到 outputs/" 指令，改为 "在回复中直接输出以下结构"
-3. **Main skills** — paper-pipeline 和 orchestrate 的 SKILL.md 去掉 `输出到 outputs/{slug}/` 参数，改为期望 inline 回复
+3. **Main skills** — paper-pipeline 的 SKILL.md 去掉 `输出到 outputs/{slug}/` 参数，改为期望 inline 回复
 
 ### 阶段2：P1 修复（ideate）
 
@@ -142,4 +135,3 @@
 ### 阶段3：清理
 
 - 删除各 agent workspace 下遗留的 `outputs/` 和 `idea-runs/` 目录（如有）
-- 更新 orchestrate AGENTS.md 第101行："产出文件路径" → "产出内容（inline reply）"

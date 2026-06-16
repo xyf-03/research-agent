@@ -5,96 +5,46 @@ description: Research idea generation from literature. Two-stage chain: curate w
 
 # brainstorm
 
-## 概述 / Overview
+## 概述
 
-Two-stage orchestration: **curate** produces quality-checked literature context, then **ideate** generates structured research idea cards. Use when the user wants research opportunities grounded in wiki evidence, not speculation.
+Two-stage direct pipeline: **curate** produces quality-checked literature context, then **ideate** generates structured research idea cards. Use when the user wants research opportunities grounded in wiki evidence, not speculation.
 
-**Triggers**: "brainstorm ideas", "research ideas", "generate ideas", "research directions", "find research gaps", "科研 idea", "研究思路", "头脑风暴"
+**触发词**: "brainstorm ideas", "research ideas", "generate ideas", "research directions", "find research gaps", "科研 idea", "研究思路", "头脑风暴"
 
-## 应用场景 / Scenario
+## Subagent 调用链
 
-Generate research ideas from existing wiki literature.
+1. **curate** — Wiki curation, quality linting, cross-paper comparison, literature queries
+2. **ideate** — Research idea generation, opportunity synthesis, deduplication, validation
 
-## Subagent 调用链 / Agent Chain
-
-1. **curate** -- Wiki curation, quality linting, cross-paper comparison, literature queries
-2. **ideate** -- Research idea generation, opportunity synthesis, deduplication, validation
-
-## 编排步骤 / Orchestration Steps
+## 编排步骤
 
 ### Step 0: Pre-flight
 
-Main agent uses `wiki_get` to read the wiki index and relevant domain pages. If insufficient, browser-searches arXiv/Scholar. Collect page IDs, summaries, gaps into a context packet.
+Main agent 使用 `wiki_get` 读取 wiki 索引和相关领域页面。不足时 browser 搜索 arXiv/Scholar。收集 page ID、摘要、缺口组成上下文包。
 
-### Step 1: Spawn curate (timeout: 900s)
+### Step 1: 派发 curate | Timeout: 900s
 
-```
-sessions_spawn(
-  agentId: "curate",
-  task: """Prepare a curated context digest for research idea generation.
+任务：为研究 idea 生成准备精选上下文摘要。范围包括领域/论文、关注区域。产出：跨论文比较（方法、数据集、指标、evidence_level）、lint 报告（矛盾、缺口、过时 claim）、文献摘要（局限性、未来工作信号、未验证 claim）、缺口列表（2-4 篇同类论文集群的具体痛点）。仅使用 wiki 内容，每个 claim 引用 page_id。
 
-## Scope
-- Domain / papers: {user domain or paper list}
-- Focus areas: {user constraints}
+### Step 2: 审查 curate 产出 | Timeout: 300s
 
-## Produce
-1. Cross-paper comparison: methods, datasets, metrics, evidence_level
-2. Lint report: contradictions, gaps, stale claims in scope
-3. Literature summary: limitations, future-work signals, untested claims
-4. Gap list: concrete pain points from 2-4 same-type paper clusters
+派发 reviewer 验证摘要（完整性、证据准确性、缺口具体性）。FAIL 时将修复提示发回 curate。最多 2 轮修复。
 
-## Constraints
-- Wiki content only. Cite page_id for every claim. Distinguish evidence levels.
-- Output structured Markdown.
+### Step 3: 派发 ideate | Timeout: 1200s
 
-## Context from main agent
-- Wiki pages read: {paths}
-- Key facts: {summary}
-- Supplementary sources: {URLs or none}""",
-  mode: "run",
-  runTimeoutSeconds: 900
-)
-```
+任务：从精选上下文生成研究 idea card。5-10 张 card，每张锚定到论文或 2-4 篇论文集群并命名痛点。每张 card：痛点证据、why now、提议机制、最小验证实验、预期指标、风险。去重，弱 card 标记 low-confidence。在 reply 中内联返回完整 idea card。
 
-### Step 2: Review curate output (timeout: 300s)
+### Step 4: 审查 ideate 产出 | Timeout: 300s
 
-Spawn `reviewer` to validate digest (completeness, evidence accuracy, gap specificity). On FAIL, send fix prompt to curate via `sessions_send` and re-review. Max 2 fix rounds; then escalate to user.
+派发 reviewer 验证 card（证据锚定、可测试实验、去重）。同样修复循环规则。
 
-### Step 3: Spawn ideate (timeout: 1200s)
+### Step 5: 呈现和回写
 
-```
-sessions_spawn(
-  agentId: "ideate",
-  task: """Generate research idea cards from curated context.
+1. 向用户呈现摘要表和 idea card。
+2. 如有 wiki 回写候选，委托 curate 更新 wiki。
+3. 建议下一步（跑实验、深挖、入库更多论文）。
 
-## Curated context
-{reviewed curate output}
-
-## User requirements
-{domain, constraints, focus}
-
-## Requirements
-- 5-10 cards, each anchored to a paper or 2-4 paper cluster with named pain point
-- Per card: pain point evidence, why now, proposed mechanism, minimum validation experiment, expected metric, risk
-- Deduplicate; mark weak cards low-confidence
-- Return complete idea cards inline in reply text
-- Include wiki writeback candidates""",
-  mode: "run",
-  runTimeoutSeconds: 1200
-)
-```
-
-### Step 4: Review ideate output (timeout: 300s)
-
-Spawn `reviewer` to validate cards (evidence anchoring, testable experiments, deduplication). Same fix-loop rules.
-
-### Step 5: Present and writeback
-
-1. Present summary table (title, anchor papers, novelty, risk, cost) and idea cards to user.
-2. If writeback candidates reference existing wiki pages, spawn `curate` to update them.
-3. Suggest next steps (run experiment, deep-dive, ingest more papers).
-
-## 输入规范 / Input Specification
+## 输入规范
 
 | Field | Required | Description |
 |-------|----------|-------------|
@@ -102,17 +52,11 @@ Spawn `reviewer` to validate cards (evidence anchoring, testable experiments, de
 | Paper list | No | Specific papers (titles, wiki paths, URLs). |
 | Constraints | No | Methods, datasets, problems, time horizon. |
 
-Minimum: domain/topic or at least one paper reference. If neither, ask user.
+最少需要 domain/topic 或至少一个论文引用。都没有则询问用户。
 
-## 输出规范 / Output Specification
+## 输出规范
 
-1. **Idea summary table** for quick scanning
-2. **Detailed idea cards** inline in reply text with full evidence chain and validation plan
-3. **Wiki update notice** for any updated pages
-4. **Next-step suggestions**
-
-## 示例 / Examples
-
-**Example 1 -- Domain-scoped**: User asks "帮我找联邦学习领域的研究空缺". Pre-flight finds 5 FL papers. curate produces comparison and gaps. ideate generates 7 cards. reviewer passes both. Present top ideas, update wiki comparison pages.
-
-**Example 2 -- Paper-anchored**: User asks "基于 MHKC 和 FedDyn 生成 idea". curate cross-compares, highlights complementary weaknesses. ideate produces 5 cards anchored to both papers. Present with validation experiment suggestions for top 2.
+1. **Idea 摘要表** 供快速浏览
+2. **详细 idea card** 在 reply 中内联返回，含完整证据链和验证计划
+3. **Wiki 更新通知** 针对已更新页面
+4. **下一步建议**

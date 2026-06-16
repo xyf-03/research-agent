@@ -7,89 +7,64 @@ description: Paper PDF ingestion workflow for the Ingest agent. Convert a PDF in
 
 ## Purpose
 
-Use this skill to ingest a research paper PDF and create a structured wiki paper page. The Ingest agent invokes this skill as its single core capability: Paper PDF ingestion → wiki page creation.
+将研究论文 PDF 摄入并创建结构化 wiki 论文页面。Ingest agent 的核心能力：论文 PDF 摄入 → wiki 页面创建。
 
 ## When To Use
 
-Use this skill when:
-- A new paper PDF needs to be added to the wiki
-- A user (main agent 颖姗 or end user) requests "ingest this paper" or "add this paper to the wiki"
-- raw/inbox/ contains a paper that needs to be processed
+- 新论文 PDF 需要加入 wiki
+- 用户请求"入库这篇论文"或"加入 wiki"
+- raw/inbox/ 中有待处理的论文
 
-Do not use this skill for:
-- Literature queries (those are handled by the curate agent)
-- Cross-paper comparisons (those are handled by the curate agent)
-- Wiki quality audits (those are handled by the curate agent)
+不要用于：
+- 文献查询（由 curate agent 处理）
+- 跨论文比较（由 curate agent 处理）
+- Wiki 质量审计（由 curate agent 处理）
 
-## Inputs
+## 输入
 
-Collect or infer these fields before ingestion:
-- `pdf_path`: path to the source PDF (raw/inbox/ or raw/sources/)
-- `target_domain`: which domain subtree the paper belongs to
-- `evidence_level`: based on PDF access (default: full-paper if full text extracted)
+- `pdf_path`: 源 PDF 路径（raw/inbox/ 或 raw/sources/）
+- `target_domain`: 论文所属领域子树
+- `evidence_level`: 基于 PDF 访问程度（默认：全文提取成功则为 full-paper）
 
-## Output Contract
+## 输出
 
-After successful ingestion, the following should exist:
+- raw/sources/ 下的规范命名 PDF 和提取全文
+- 通过 `wiki_apply` 创建结构化论文页面（slug 在目标领域下）
+- 通过 `wiki_apply` 更新 wiki 索引和日志
 
-```text
-raw/sources/YYYY-MM-DD-short-title.pdf
-raw/sources/YYYY-MM-DD-short-title.txt   # extracted full text
-```
+论文页面必须包含：
+- 全部 frontmatter 字段
+- 论文专属 frontmatter（paper.title, paper.authors, paper.year, paper.venue, paper.arxiv, paper.doi, paper.code, classification.*, evidence_level）
+- 全部 11 节（Citation, One-Sentence Contribution, Problem Setting, Method, Experiments, Results, Limitations, Reusable Claims, Connections, Open Questions, Provenance）
 
-Wiki side effects (via `wiki_apply` / `wiki_get` tools, not filesystem writes):
-- A structured paper page created under the target domain (slug: `<slug>`)
-- wiki index updated (add paper entry under domain)
-- wiki log appended (format: `## [YYYY-MM-DD] ingest | Paper Title`)
-
-The paper page must include:
-- All frontmatter fields (title, type, domain, status, created, updated, tags, source_pages, raw_sources, related_pages)
-- Paper-specific frontmatter (paper.title, paper.authors, paper.year, paper.venue, paper.arxiv, paper.doi, paper.code, classification.*, evidence_level)
-- All 11 sections (Citation, One-Sentence Contribution, Problem Setting, Method, Experiments, Results, Limitations, Reusable Claims, Connections, Open Questions, Provenance)
-
-## Ingestion Workflow (Execute-Verify-Report)
+## Ingestion 流程（Execute-Verify-Report）
 
 ### Step 1: Capture
-1. Move the PDF to raw/sources/ with canonical naming `YYYY-MM-DD-short-title.pdf`
-2. **Verify**: file exists, is readable, size > 0
-3. On failure: retry once (check path/permissions), then report and stop
+捕获 raw source，规范命名移入 raw/sources/。验证文件存在、可读、非空。失败重试一次。
 
 ### Step 2: Extract
-1. Extract full text to raw/sources/`YYYY-MM-DD-short-title.txt`
-2. **Verify**: text has sufficient length, contains paper structure (sections, references)
-3. On failure: try alternative extraction once, then report and stop
+提取全文到 raw/sources/。验证文本长度足够、包含论文结构。失败尝试替代方法一次。
 
 ### Step 3: Create Paper Page
-1. Use `wiki_apply` to create the paper page under the target domain with the 11-section template (see references/page-templates.md)
-2. Fill all frontmatter fields; set `evidence_level` based on coverage
-3. **Verify**: page >=100 lines, has evidence_level, Results has concrete numbers (use `wiki_get` to re-read)
-4. On failure: re-read source and fill missing parts, max 1 retry
+使用 `wiki_apply` 按 11 节模板（见 `references/page-templates.md`）创建论文页面。填写全部 frontmatter 字段，设置 evidence_level。验证页面 >=100 行、有 evidence_level、Results 有具体数字。失败补充缺失部分，最多一次重试。
 
 ### Step 4: Update Index
-1. Use `wiki_apply` to update the wiki index (add paper page entry under domain)
-2. Use `wiki_apply` to append a log entry with format `## [YYYY-MM-DD] ingest | Paper Title`
-3. **Verify**: use `wiki_get` to confirm index links correct, log is append-only
-4. On failure: stop and report
+使用 `wiki_apply` 更新 wiki 索引和日志。验证索引链接正确、日志为追加式。
 
-## Minimum Acceptable Output
+## 最低可接受产出
 
-- One raw source captured
-- One full-text extraction completed
-- One paper page created via wiki tools (>=100 lines, has evidence_level, Results has concrete numbers)
-- Wiki index and log updated via wiki tools
+- 一个 raw source 已捕获
+- 一份全文已提取
+- 一个论文页面已通过 wiki 工具创建（>=100 行，有 evidence_level，Results 有具体数字）
+- Wiki 索引和日志已更新
 
-## Quality Rules
+## 质量规则
 
-- No fabricated claims — every claim traces to a paper page section
-- Experiments must include dataset sizes, baseline names, training hyperparameters
-- Results must include concrete numbers for every main claim (no "significantly outperforms SOTA")
-- Pages in Chinese; preserve original paper title, authors, DOI, arXiv, code links
-- Mark missing information as "not reported in the source"
-- Update existing pages rather than creating duplicates
+遵循 `references/wiki-conventions.md` 中的命名、索引、日志和链接规范。此外：
 
-## Safety Rules
-
-- Never modify raw/ files
-- Mark uncertain content as "待验证"
-- Confirm before destructive operations (delete, rename, mass refactor)
-- Do not leak paper PDF content externally
+- 不编造 claim——每条 claim 追溯到论文页章节
+- Experiments 必须包含数据集大小、baseline 名称、训练超参
+- Results 必须为每个 main claim 包含具体数字
+- 页面用中文；保留原始论文标题、作者、DOI、arXiv、代码链接的原文
+- 缺失信息标注"原文未报告"
+- 更新已有页面优先于创建重复页面

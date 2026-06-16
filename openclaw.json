@@ -68,8 +68,8 @@
       "subagents": {
         "delegationMode": "prefer",
         "maxConcurrent": 8,
-        "maxSpawnDepth": 2,
-        "allowAgents": ["orchestrate", "ingest", "curate", "extract", "critic", "design", "spec", "audit", "ideate", "judge"]
+        "maxSpawnDepth": 1,
+        "allowAgents": ["ingest", "curate", "extract", "critic", "design", "spec", "audit", "ideate", "judge"]
       }
     },
     "list": [
@@ -78,11 +78,6 @@
         "name": "颖姗",
         "default": true,
         "workspace": "~/.openclaw/workspace/main"
-      },
-      {
-        "id": "orchestrate",
-        "name": "Orchestrate",
-        "workspace": "~/.openclaw/workspace/orchestrate"
       },
       {
         "id": "ingest",

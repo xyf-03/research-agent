@@ -25,7 +25,7 @@ This repo follows OpenClaw's hub-and-spoke multi-agent pattern. The main agent (
   - `workspace/audit/` — Audit agent: Pipeline output quality auditing.
   - `workspace/ideate/` — Ideate agent: Research idea generation, opportunity synthesis, deduplication.
   - `workspace/judge/` — Judge agent: Quality gate review and benchmark judging.
-- Main agent skills at `skills/<name>/` orchestrate subagents for user-facing scenarios: `skills/paper-pipeline/`, `skills/paper-ingest/`, `skills/literature-query/`, `skills/brainstorm/`, `skills/benchmark/`.
+- Main agent skills at `skills/<name>/` directly coordinate subagents for user-facing scenarios: `skills/paper-pipeline/`, `skills/paper-ingest/`, `skills/literature-query/`, `skills/brainstorm/`, `skills/benchmark/`.
 - **benchmarks/** — Developer benchmarks and evaluation datasets for testing agent capabilities.
 - **docs/** — Local snapshots of OpenClaw design references (Lobster, Task Flow, Hooks, Standing Orders, Commitments, Automation overview). **Read these before designing any new feature** — start with `docs/README.md` for the "designing X? read Y" index. The canonical source is <https://docs.openclaw.ai/>; refresh the local files when upstream changes.
 
@@ -83,15 +83,15 @@ When adding a new agent, create the workspace directory, register it in `opencla
 
 ### Agent Design Pattern
 
-The system uses a **main agent → main agent skills → subagent → subagent skills** delegation chain:
+The system uses a **main agent → main agent skills → subagent → subagent skills** delegation chain. The former depth-1 coordinator agent has been removed; main now directly coordinates worker subagents.
 
-1. **Main agent (颖姗)** — bound to messaging channels, handles user-facing conversation, routing, and orchestration.
-2. **Main agent skills** — live at `skills/<skill-name>/` (project root). Each skill orchestrates one or more subagents into a user-facing workflow. There are 5 core orchestration skills:
-   - `skills/paper-ingest/` — orchestrates `ingest` and `curate` for paper PDF-to-wiki pipeline.
-   - `skills/paper-pipeline/` — orchestrates `extract`, `critic`, `design`, `spec`, and `audit` for the full paper analysis pipeline.
-   - `skills/literature-query/` — orchestrates `curate` for cross-paper queries and comparisons.
-   - `skills/brainstorm/` — orchestrates `curate` and `ideate` for research idea generation.
-   - `skills/benchmark/` — orchestrates `judge` for benchmark execution and evaluation.
+1. **Main agent (颖姗)** — bound to messaging channels, handles user-facing conversation, routing, direct worker dispatch, and synthesis.
+2. **Main agent skills** — live at `workspace/main/skills/<skill-name>/`. Each skill coordinates one or more subagents into a user-facing workflow. There are 5 core coordination skills:
+   - `skills/paper-ingest/` — coordinates `ingest` and `curate` for paper PDF-to-wiki pipeline.
+   - `skills/paper-pipeline/` — coordinates `extract`, `critic`, `design`, `spec`, and `audit` for the full paper analysis pipeline.
+   - `skills/literature-query/` — coordinates `curate` for cross-paper queries and comparisons.
+   - `skills/brainstorm/` — coordinates `curate` and `ideate` for research idea generation.
+   - `skills/benchmark/` — coordinates `judge` for benchmark execution and evaluation.
 3. **Subagents** — each registered in `openclaw.json` under `agents.list`, spawned by the main agent via `sessions_spawn`. Each subagent owns a **single domain of responsibility**:
    - `ingest` — Paper PDF→wiki ingestion pipeline.
    - `curate` — Wiki curation, quality linting, cross-paper comparison, literature queries.
@@ -107,11 +107,11 @@ The system uses a **main agent → main agent skills → subagent → subagent s
 **Constraints:**
 
 - **Single minimal function per subagent.** Each subagent implements exactly one atomic capability. If a subagent grows to handle multiple distinct functions, split it. The litmus test: can you describe what the subagent does in a single verb phrase? If not, it's too broad.
-- Main agent skills orchestrate subagents. They should not reimplement logic that belongs in a subagent skill.
+- Main agent skills coordinate subagents. They should not reimplement logic that belongs in a subagent skill.
 - Subagent skills should be self-contained and produce outputs that downstream stages or other agents can consume.
 - The `agents.defaults.subagents.allowAgents` list in `openclaw.json` controls which subagents the main agent may spawn. Update it when adding new subagents.
-- Main agent's AGENTS.md and TOOLS.md define how subagents are invoked. Keep orchestration logic in main agent skills (`skills/<skill-name>/`), not scattered across workspace files.
-- **Subagent output delivery: inline reply only.** Subagent 产出只能走两条路：(1) 写入 wiki（通过 `wiki_apply` 等 wiki 工具），(2) 在 reply 中直接返回完整内容给调用者。**禁止**将产出写入文件系统（`outputs/`、`idea-runs/` 等目录）让其他 agent 通过路径去找。调用者（orchestrate/main）负责将上游 reply 内容嵌入下游 task 参数中传递。每个 subagent 的 TOOLS.md 应限制写入权限为 `memory/` 过程记录，产物通过 inline reply 返回。
+- Main agent's AGENTS.md and TOOLS.md define how subagents are invoked. Keep coordination logic in main agent skills (`skills/<skill-name>/`), not scattered across workspace files.
+- **Subagent output delivery: inline reply only.** Subagent 产出只能走两条路：(1) 写入 wiki（通过 `wiki_apply` 等 wiki 工具），(2) 在 reply 中直接返回完整内容给调用者。**禁止**将产出写入文件系统（`outputs/`、`idea-runs/` 等目录）让其他 agent 通过路径去找。调用者（main）负责将上游 reply 内容嵌入下游 task 参数中传递。每个 subagent 的 TOOLS.md 应限制写入权限为 `memory/` 过程记录，产物通过 inline reply 返回。
 
 ### Benchmark CI 流程
 
@@ -143,7 +143,7 @@ When creating a new subagent:
 2. Create `workspace/<agentId>/` with standard workspace files (SOUL.md, AGENTS.md, USER.md, TOOLS.md, MEMORY.md, HEARTBEAT.md, DREAMS.md).
 3. Add the agent ID to `agents.defaults.subagents.allowAgents`.
 4. Write skills under `workspace/<agentId>/skills/` following the single-responsibility principle.
-5. If the main agent needs to orchestrate this subagent, create or update a main agent skill under `skills/`.
+5. If the main agent needs to coordinate this subagent, create or update a main agent skill under `skills/`.
 
 ## PR Rules
 

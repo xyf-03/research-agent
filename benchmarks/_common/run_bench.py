@@ -125,7 +125,7 @@ def _debug_banner(bench: str) -> None:
 # the CI debug artifact upload includes them.  We also print a condensed
 # human-readable summary in the CI logs inside ::group:: blocks.
 
-_AGENT_IDS = ("main", "orchestrate", "ingest", "curate", "extract", "critic",
+_AGENT_IDS = ("main", "ingest", "curate", "extract", "critic",
               "design", "spec", "audit", "ideate", "judge", "reviewer")
 
 _SESSION_MOUNT = "/home/node/.openclaw"
@@ -468,7 +468,7 @@ def repair_container_permissions(container: str) -> None:
     script = r'''
 set -e
 : "${BENCH_MOUNT:=/home/node/.openclaw}"
-for agent_id in main orchestrate ingest curate extract critic design spec audit ideate judge reviewer; do
+for agent_id in main ingest curate extract critic design spec audit ideate judge reviewer; do
   mkdir -p "${BENCH_MOUNT}/agents/${agent_id}/sessions"
 done
 for path in \
