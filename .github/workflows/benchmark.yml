@@ -230,52 +230,7 @@ jobs:
         # `<bench>-<N>` runs at most 5 QAs per job, matching the
         # timeout budget of 60 minutes per matrix entry.
         bench:
-          - idea-generate-1
-          - idea-generate-2
-          - idea-generate-3
-          - idea-generate-4
-          - idea-generate-5
-          - idea-generate-6
-          - idea-generate-7
-          - idea-generate-8
-          - idea-generate-9
-          - idea-generate-10
-          - paper-review-1
-          - paper-review-2
-          - paper-review-3
-          - paper-review-4
-          - paper-review-5
-          - paper-review-6
-          - paper-review-7
-          - paper-review-8
-          - paper-review-9
-          - paper-review-10
-          - paper-review-11
-          - paper-review-12
-          - paper-review-13
-          - paper-review-14
-          - paper-review-15
-          - paper-review-16
-          - paper-review-17
-          - paper-review-18
-          - paper-review-19
-          - paper-review-20
-          - paper-review-21
           - paper-review-22
-          - paper-review-23
-          - paper-review-pipeline
-          - paper-ingest
-          - idea-generation
-          - autoresearch-1
-          - autoresearch-2
-          - autoresearch-3
-          - autoresearch-4
-          - autoresearch-5
-          - autoresearch-6
-          - autoresearch-7
-          - autoresearch-8
-          - autoresearch-9
-          - autoresearch-10
 
     env:
       BENCH_RUN_ID: ${{ github.run_id }}-${{ github.run_attempt }}
