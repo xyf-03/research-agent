@@ -18,19 +18,19 @@ set -euo pipefail
 HERE="$(cd "$(dirname "$0")" && pwd)"
 log() { printf '\n[paper-review-22.env] %s\n' "$*"; }
 
-# Container already booted by env_setup.sh (called by run_local_benchmark.sh
-# before env.sh). Skip bench_force_recreate to avoid double-rebuild on Windows.
+# Source the runtime env file (produced by env_setup.sh) to get helper
+# functions (bench_force_recreate, bench_container_cli, …) and exported
+# variables (BENCH_CONTAINER, BENCH_MOUNT, BENCH_COMPOSE_PROJECT, …).
+# The setup job tore down the initial container, so the bench job MUST
+# call bench_force_recreate to bring up a fresh one.
 if [[ -n "${BENCH_ENV_FILE:-}" && -f "${BENCH_ENV_FILE}" ]]; then
   # shellcheck disable=SC1090
   . "${BENCH_ENV_FILE}"
-fi
-log "container ready (env_setup.sh); skipping force recreate"
-if ! declare -F bench_container_cli >/dev/null; then
-  bench_container_cli() {
-    local cli="${BENCH_CONTAINER_CLI:-${BENCH_CONTAINER_RUNTIME:-docker}}"
-    [[ "${cli}" == "auto" ]] && cli=docker
-    "${cli}" "$@"
-  }
+  log "sourced runtime env; calling bench_force_recreate"
+  bench_force_recreate
+else
+  echo "[paper-review-22.env][FATAL] BENCH_ENV_FILE=${BENCH_ENV_FILE:-<unset>} not found or missing; cannot proceed" >&2
+  exit 1
 fi
 
 # ── 1. Stage wiki fixtures into the wiki vault ─────────────────────
