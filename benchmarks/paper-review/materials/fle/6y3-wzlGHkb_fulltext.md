@@ -1,7 +1,0 @@
-# Non-robust Features through the Lens of Universal Perturbations
-
-## Abstract
-Recent work ties adversarial examples to existence of non-robust features: features which are susceptible to small perturbations and believed to be unintelligible to humans, but still useful for prediction. We study universal adversarial perturbations and demonstrate that the above picture is more nuanced. Specifically, even though universal perturbations---similarly to standard adversarial perturbations---do leverage non-robust features, these features tend to be fundamentally different from the ``standard'' ones and, in particular, non-trivially human-aligned. Namely, universal perturbations have more human-aligned locality and spatial invariance properties. However, we also show that these human-aligned non-robust features have much less predictive signal than general non-robust features. Our findings thus take a step towards improving our understanding of these previously unintelligible features.
-
-## Expert Reviewer Summary
-The paper presents an exploratory study analyzing non-robust features through the lens of universal adversarial perturbations. It challenges traditional beliefs, suggesting that non-robust features, typically deemed semantically meaningless, can be meaningful if aligned with human perception. Extensive experiments are conducted to support these arguments, but the work requires further precision in definitions and evidence to establish its importance in the field.
