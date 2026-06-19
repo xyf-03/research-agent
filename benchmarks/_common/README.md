@@ -9,7 +9,7 @@ Shared CI/CD infrastructure for all benchmarks under `benchmarks/`.
 | `qa_schema.json` | JSON Schema for `qa.jsonl` (one QA per line). |
 | `env_setup.sh` | Unified pre-benchmark env: pull `acautomata/openclaw-docker-cn-im` image, `docker compose up`, rsync the repo into the container, run health check. |
 | `run_local_benchmark.sh` | Local single-benchmark runner. Boots the CI-like container env, runs one `env.sh` + `metrics.py`, and supports Docker or Apple's `container` CLI. |
-| `judge.py` | Reusable scoring library: `judge_with_rules`, `judge_with_agent` (LLM judge through the dedicated `reviewer` agent). Imported by every benchmark's `metrics.py`. |
+| `judge.py` | Reusable scoring library: `judge_with_rules` (rule-based), plus `judge_prompt` + `judge_parse` (LLM score via the dedicated `judge` agent). Imported by every benchmark's `metrics.py`. |
 | `report_pr.py` | Collects every benchmark's `bench-report.json`, renders a Markdown table, posts (or updates) a single PR comment via `gh pr comment`. |
 | `README.md` | This file. |
 

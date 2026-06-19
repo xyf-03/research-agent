@@ -1,11 +1,18 @@
 #!/usr/bin/env python3
 """Reusable scoring for benchmark metrics.py scripts.
 
-Two judges:
-  judge_with_rules(answer, qa)  -- rule-based, uses qa.gold_answer and must_contain-style hints.
-  judge_with_agent(qa, answer, agent_id, model=None) -- LLM judge via direct `openclaw agent --agent reviewer`.
+Two scoring entry points:
+  judge_with_rules(answer, qa)            -- rule-based (qa.gold_answer / must_contain).
+  judge_parse(judge_text, qa, candidate)  -- parse a 0..1 score produced by the
+                                             dedicated `judge` agent (whose prompt
+                                             is built by judge_prompt).
 
-Both return a dict: {score: float (0-1), pass: bool, rationale: str, dimensions?: dict}.
+For LLM judging, run_bench.py builds the prompt with ``judge_prompt``, triggers
+the ``judge`` agent, waits, reads the score out of the judge session log, and
+hands the text to ``judge_parse``. ``judge_with_agent`` is kept only for the
+manual ``judge.py agent ...`` CLI (a single-shot convenience).
+
+Every function returns a dict: {score: float (0-1), pass: bool, rationale: str}.
 """
 from __future__ import annotations
 
@@ -71,6 +78,96 @@ def judge_with_rules(answer: str, qa: dict) -> dict:
     }
 
 
+# --- LLM judge: prompt + score parsing (pure) -------------------------------
+#
+# The benchmark flow triggers the dedicated `judge` agent, waits for it to
+# finish, then reads its final assistant turn out of the judge session log.
+# judge_prompt builds the (score-only) prompt; judge_parse turns the agent's
+# text into a verdict. Both are pure -- no subprocess, no container -- so
+# run_bench.py can reuse them without a circular import.
+
+
+def judge_prompt(qa: dict, answer: str) -> str:
+    """Build the score-only judge prompt for the dedicated judge agent.
+
+    The prompt forces a bare numeric score: the closing directive (bilingual,
+    emphatic) forbids any explanation / JSON / prose, so the reply can be parsed
+    straight into a number by :func:`judge_parse`.
+    """
+    rubric = qa.get("rubric") or "Score how well the answer matches the gold answer on a 0-1 scale."
+    gold = qa.get("gold_answer")
+    return (
+        "You are the dedicated OpenClaw Judge agent: strict, fair, uncompromising. "
+        "Read the QA, the reference answer, the rubric, and the candidate, then score "
+        "strictly according to the rubric and required fields.\n\n"
+        f"QA: {qa.get('question', '')}\n\n"
+        f"REFERENCE: {json.dumps(gold, ensure_ascii=False) if gold else '(none)'}\n\n"
+        f"RUBRIC: {rubric}\n\n"
+        f"PASS_THRESHOLD: {qa.get('pass_threshold', 0.5)}\n\n"
+        f"CANDIDATE:\n{(answer or '')[:8000]}\n\n"
+        "=== OUTPUT FORMAT (MANDATORY) ===\n"
+        "只输出一个 0 到 1 之间的数字作为分数。禁止输出任何解释、JSON、理由或其他文字。\n"
+        "Output ONLY a single number in [0, 1]. No explanation, no JSON, no rationale, "
+        "no prose — nothing else. Any non-numeric output is treated as an error."
+    )
+
+
+class JudgeScoreParseError(ValueError):
+    """The judge agent's reply was not a parseable numeric score."""
+
+
+def _parse_judge_score(text: str) -> float | None:
+    """Extract a 0..1 score from judge output.
+
+    Handles (in order): a ``{"score": x}`` JSON fragment, a bare decimal in
+    [0, 1], or any number (percent-style >1 is scaled by 0.01). Returns None if
+    no number is found.
+    """
+    if not text:
+        return None
+    m = re.search(r"\{[^{}]*\"score\"[^{}]*\}", text, re.S)
+    if m:
+        try:
+            return float(json.loads(m.group(0)).get("score"))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            pass
+    nums = re.findall(r"\d+(?:\.\d+)?", text)
+    for n in nums:
+        f = float(n)
+        if 0.0 <= f <= 1.0:
+            return f
+    for n in nums:
+        f = float(n)
+        return f * 0.01 if f > 1 else f
+    return None
+
+
+def judge_parse(text: str, qa: dict, candidate: str = "", *, strict: bool = False) -> dict:
+    """Turn the judge agent's output text into a verdict.
+
+    Parses a 0..1 score with :func:`_parse_judge_score`. With ``strict=True``
+    (the benchmark flow) a non-numeric reply raises :class:`JudgeScoreParseError`
+    instead of degrading to rule scoring, so a broken judge never silently
+    masquerades as a rule verdict. With ``strict=False`` (manual CLI) it falls
+    back to rule scoring on parse failure and tags the rationale.
+    """
+    score = _parse_judge_score(text or "")
+    if score is None:
+        if strict:
+            raise JudgeScoreParseError(
+                f"judge reply was not a numeric score: {(text or '').strip()[:160]!r}"
+            )
+        fallback = judge_with_rules(candidate, qa)
+        fallback["rationale"] = "agent judge score parse fail; " + fallback["rationale"]
+        return fallback
+    score = max(0.0, min(1.0, score))
+    return {
+        "score": round(score, 4),
+        "pass": score >= qa.get("pass_threshold", 0.5),
+        "rationale": f"judge score from log: {(text or '').strip()[:160]!r}",
+    }
+
+
 def _container_cli() -> str:
     """Return the container runtime CLI used for benchmark exec calls."""
     cli = os.environ.get("BENCH_CONTAINER_CLI") or os.environ.get("BENCH_CONTAINER_RUNTIME") or "docker"
@@ -81,7 +178,7 @@ def _container_cli() -> str:
 
 
 def _extract_judge_text(stdout: str) -> str:
-    """Extract the reviewer text from `openclaw agent --json` stdout."""
+    """Extract the judge agent text from `openclaw agent --json` stdout."""
     text = stdout or ""
     if not text.strip():
         return ""
@@ -114,34 +211,23 @@ def _extract_judge_text(stdout: str) -> str:
     return text
 
 
-def judge_with_agent(qa: dict, answer: str, agent_id: str = "reviewer",
+def judge_with_agent(qa: dict, answer: str, agent_id: str = "judge",
                      model: str | None = None, timeout: int = 600,
                      container: str | None = None) -> dict:
-    """Run a one-shot LLM judge by directly invoking the reviewer agent.
+    """One-shot LLM judge for the manual ``judge.py agent`` CLI.
 
-    The reviewer prompt asks for a JSON verdict: {"score": 0-1, "rationale": "..."}.
-    Falls back to rule scoring if the CLI is unavailable.
+    Triggers the dedicated ``judge`` agent synchronously (no spawn -> no
+    two-phase wait needed for this convenience path), extracts its reply, and
+    parses the score. Falls back to rule scoring on timeout / CLI failure /
+    parse failure, tagging the rationale so a degraded verdict is visible.
 
-    The judge call is bounded by `timeout` (default 600s) plus a 30s grace on
-    the subprocess side; a hung judge therefore cannot stall the whole
-    benchmark run. The fallback to rule scoring is tagged so the report
-    shows the difference between a real judge verdict and a degraded one.
+    The benchmark itself (run_bench.py) does NOT use this manual helper: its
+    ``_run_judge`` makes the same direct ``--agent judge`` call but parses the
+    score strictly (``judge_parse(..., strict=True)``), raising
+    :class:`JudgeScoreParseError` on a non-numeric reply instead of falling back.
     """
-    agent_id = "reviewer"
-    rubric = qa.get("rubric") or "Score how well the answer matches the gold answer on a 0-1 scale."
-    gold = qa.get("gold_answer")
-    prompt = (
-        "You are the dedicated OpenClaw Reviewer agent: honest, uncompromising, and fair. "
-        "Read the QA, the reference answer, the rubric, and the candidate. "
-        "Score strictly according to the rubric and required fields. "
-        "Reply with a single JSON object only: {\"score\": <0..1>, \"rationale\": \"<one short sentence>\"}.\n\n"
-        f"QA: {qa.get('question', '')}\n\n"
-        f"REFERENCE: {json.dumps(gold, ensure_ascii=False) if gold else '(none)'}\n\n"
-        f"RUBRIC: {rubric}\n\n"
-        f"PASS_THRESHOLD: {qa.get('pass_threshold', 0.5)}\n\n"
-        f"CANDIDATE:\n{(answer or '')[:8000]}\n"
-    )
-
+    agent_id = "judge"
+    prompt = judge_prompt(qa, answer)
     session_key = f"agent:{agent_id}:bench-judge-{os.getpid()}-{uuid.uuid4().hex}"
     cmd = ["openclaw", "agent", "--agent", agent_id, "--message", prompt, "--json", "--local",
            "--session-key", session_key, "--timeout", str(timeout)]
@@ -157,10 +243,6 @@ def judge_with_agent(qa: dict, answer: str, agent_id: str = "reviewer",
     try:
         out = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 30)
     except subprocess.TimeoutExpired as e:
-        # Fallback: degrade to rules so the report still has a score, but
-        # surface the timeout so the PR comment can flag it. Without this
-        # tag a 10-minute judge hang would be indistinguishable from a
-        # normal rule-based pass.
         fallback = judge_with_rules(answer, qa)
         fallback["rationale"] = f"agent judge timed out after {timeout}s ({e}); " + fallback["rationale"]
         return fallback
@@ -169,27 +251,14 @@ def judge_with_agent(qa: dict, answer: str, agent_id: str = "reviewer",
         fallback["rationale"] = f"agent judge unavailable ({e}); " + fallback["rationale"]
         return fallback
 
-    # Only look at stdout for the JSON verdict; with --json, diagnostics
-    # are routed to stderr (per docs.openclaw.ai/tools/agent-send).  OpenClaw
-    # normally wraps replies in payloads[].text, so extract that before looking
-    # for the reviewer's requested JSON verdict.
+    # With --json, the structured payloads[].text is on stdout and diagnostics
+    # on stderr. Extract the agent text, then parse the score out of it.
     text = _extract_judge_text(out.stdout or "")
-    m = re.search(r"\{.*?\"score\".*?\}", text, re.S)
-    if not m:
-        fallback = judge_with_rules(answer, qa)
-        fallback["rationale"] = f"agent judge parse fail; " + fallback["rationale"]
-        return fallback
-    try:
-        verdict = json.loads(m.group(0))
-        score = float(verdict.get("score", 0.0))
-    except (ValueError, TypeError):
-        fallback = judge_with_rules(answer, qa)
-        fallback["rationale"] = "agent judge JSON parse fail; " + fallback["rationale"]
-        return fallback
-    score = max(0.0, min(1.0, score))
-    return {"score": round(score, 4),
-            "pass": score >= qa.get("pass_threshold", 0.5),
-            "rationale": str(verdict.get("rationale", ""))[:500]}
+    verdict = judge_parse(text, qa, answer)
+    if verdict["rationale"].startswith("agent judge score parse fail"):
+        # judge_parse already degraded to rules; nothing more to do.
+        return verdict
+    return verdict
 
 
 # --- Entry point for direct CLI use -----------------------------------------

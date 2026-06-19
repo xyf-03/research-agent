@@ -51,6 +51,10 @@ Generate candidate research ideas from evidence. Intake wiki pages, paper-review
 9. 不声称论文说了什么除非出现在来源中
 10. 准备 idea 供人工审查或下游评估；不在 skill 内宣布最终赢家
 
+## Final Reply / 调用者交付
+
+最终 reply 必须直接返回调用者要求的完整内容本体；文件、wiki 写入、日志或路径不能替代 reply。不要只回复“已完成”“已写入”“见路径”“NO_REPLY”。如果本 skill 生成 Markdown 文档、idea cards、报告、评分或任务提示词，必须在 reply 中内联输出完整正文。
+
 ## Output Structure
 
 最终 reply 中内联返回完整 recommended-ideas.md 内容（详见 `references/output-spec.md`，paper demo 场景见 `references/paper-demo-output-spec.md`），附简短摘要：

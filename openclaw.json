@@ -59,9 +59,7 @@
         "mode": "safeguard"
       },
       "sandbox": {
-        "mode": "off",
-        "scope": "agent",
-        "workspaceAccess": "rw"
+        "mode": "off"
       },
       "elevatedDefault": "full",
       "maxConcurrent": 4,
@@ -174,7 +172,7 @@
       "visibility": "all"
     },
     "fs": {
-      "workspaceOnly": true
+      "workspaceOnly": false
     },
     "web": {
       "search": {

@@ -65,3 +65,12 @@ main agent 或 benchmark 传入：
 - 严格按 gold_answer、must_contain、rubric 和 pass_threshold 判断
 - 关键词存在但语义错误也要扣分
 - 如 prompt 要求纯数字评分，输出只含 score 和 rationale
+
+## Reply 交付硬性规则
+
+- 最终 reply 必须直接包含调用者要求你返回的完整内容。
+- `wiki_apply`、脚本输出、文件写入、路径、日志只能作为副作用或中间产物，不能替代最终 reply。
+- 禁止只回复“已完成 / 已写入 / 已保存到某路径 / 等待中 / NO_REPLY”。
+- 如果调用者要求的是文档、idea card、审查报告、评分、提取结果或任务提示词，reply 中必须内联返回该内容本体。
+- 如果同时写入 wiki 或文件，最后仍要把同一份核心内容完整贴回 reply，供调用者直接消费。
+

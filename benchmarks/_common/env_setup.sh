@@ -156,6 +156,28 @@ bench_running_state() {
   esac
 }
 
+bench_ensure_running() {
+  local container="$1"
+  local context="${2:-container check}"
+  if bench_is_running "${container}"; then
+    return 0
+  fi
+  local state
+  state="$(bench_running_state "${container}")"
+  echo "[bench_ensure_running] ${container} not running during ${context}; state=${state}; dumping logs:" >&2
+  bench_logs_tail "${container}" 200 >&2 || true
+  echo "[bench_ensure_running] attempting start ${container}" >&2
+  bench_container_cli start "${container}" >/dev/null 2>&1 || true
+  sleep 2
+  if bench_is_running "${container}"; then
+    return 0
+  fi
+  state="$(bench_running_state "${container}")"
+  echo "[bench_ensure_running][FATAL] ${container} still not running after start; state=${state}; dumping logs:" >&2
+  bench_logs_tail "${container}" 200 >&2 || true
+  return 1
+}
+
 bench_runtime_up() {
   [[ -n "${BENCH_COMPOSE_ENV_FILE:-}" ]] || { echo "[bench_runtime_up][FATAL] BENCH_COMPOSE_ENV_FILE not set" >&2; return 64; }
   set -a
@@ -209,16 +231,62 @@ bench_runtime_up() {
   esac
 }
 
-bench_reapply_setup() {
-  local container="${1:-${BENCH_CONTAINER:-}}"
-  [[ -n "${container}" ]] || { echo "[bench_reapply_setup][FATAL] no container" >&2; return 64; }
-  local root="${BENCH_ROOT}"
-  echo "[bench_reapply_setup] copy repo into ${container}:/home/node/.openclaw"
-  bench_container_cli exec "${container}" bash -lc '
-    set -e
-    cd /home/node/.openclaw
-    find . -mindepth 1 -delete 2>/dev/null || true
-  '
+bench_patch_openclaw_json_file() {
+  local openclaw_json_path="$1"
+  local llm_model="${LLM_MODEL:-minimax/MiniMax-M2.7}"
+  OPENCLAW_JSON_PATH="${openclaw_json_path}" \
+  LLM_MODEL="${llm_model}" \
+  LLM_BASE_URL="${LLM_BASE_URL:-}" \
+  python3 - <<'PY'
+import json, os, pathlib
+p = pathlib.Path(os.environ["OPENCLAW_JSON_PATH"])
+data = json.loads(p.read_text(encoding="utf-8"))
+llm_model = os.environ.get("LLM_MODEL", "")
+if "/" not in llm_model:
+    raise SystemExit(
+        "LLM_MODEL must be in 'provider/model' form (e.g. minimax/MiniMax-M2.7), got: %r" % llm_model
+    )
+_provider, _model_id = llm_model.split("/", 1)
+prov = data.setdefault("models", {}).setdefault("providers", {}).setdefault(_provider, {})
+prov["apiKey"] = {"source": "env", "provider": "default", "id": "LLM_API_KEY"}
+custom_base = os.environ.get("LLM_BASE_URL", "")
+default_base = "https://api.minimaxi.com/anthropic"
+if custom_base and custom_base != default_base:
+    prov["baseUrl"] = custom_base
+    print(f"patched models.providers.{_provider}.baseUrl -> {custom_base}")
+default_prov = data.get("models", {}).get("providers", {}).pop("default", None)
+if default_prov is not None:
+    print("removed models.providers.default overlay (not needed for bench)")
+_template = prov.get("models", [{}])[0] if prov.get("models") else {}
+_new_model = dict(_template)
+_new_model["id"] = _model_id
+_new_model["name"] = _model_id
+prov["models"] = [_new_model]
+data.setdefault("agents", {}).setdefault("defaults", {})["model"] = {
+    "primary": f"{_provider}/{_model_id}", "fallbacks": []
+}
+print(f"patched models.providers.{_provider}.models -> [{_model_id}]")
+print(f"patched agents.defaults.model.primary -> {_provider}/{_model_id}")
+defaults = data.setdefault("agents", {}).setdefault("defaults", {})
+defaults["sandbox"] = {"mode": "off"}
+defaults["elevatedDefault"] = "full"
+data.setdefault("tools", {}).setdefault("exec", {})["mode"] = "full"
+# Disable the file-tool workspace confinement so spawned sub-agents can write
+# scratch/output files outside their own workspace root (e.g. when a sub-agent
+# writes into the controller's workspace). The benchmark container is isolated
+# (loopback, no channels, disposable), so this is safe here.
+data.setdefault("tools", {}).setdefault("fs", {})["workspaceOnly"] = False
+p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+print(f"patched models.providers.{_provider}.apiKey -> SecretRef(LLM_API_KEY)")
+print("patched agents.defaults.sandbox.mode -> off")
+print("patched agents.defaults.elevatedDefault -> full")
+print("patched tools.exec.mode -> full (no-approval)")
+print("patched tools.fs.workspaceOnly -> false")
+PY
+}
+
+bench_tar_repo() {
+  local root="$1"
   tar --exclude='.git' --exclude='.github' --exclude='.env' \
       --exclude='*.sqlite*' --exclude='qmd' --exclude='logs' \
       --exclude='tasks' --exclude='credentials' --exclude='cron' \
@@ -226,7 +294,44 @@ bench_reapply_setup() {
       --exclude='extensions' --exclude='qqbot' --exclude='.openclaw' \
       --exclude='.dreams' --exclude='dreaming' --exclude='.bench-runtime' \
       --exclude='bench-results' \
-      -C "${root}" -cf - . | \
+      -C "${root}" -cf - .
+}
+
+bench_reapply_setup() {
+  local container="${1:-${BENCH_CONTAINER:-}}"
+  [[ -n "${container}" ]] || { echo "[bench_reapply_setup][FATAL] no container" >&2; return 64; }
+  local root="${BENCH_ROOT}"
+  if [[ "${BENCH_CONTAINER_RUNTIME}" == "docker" ]]; then
+    local data_dir="${BENCH_DATA_DIR:?}"
+    echo "[bench_reapply_setup] stage repo into ${data_dir} (bind mount for ${container})"
+    bench_container_cli stop "${container}" >/dev/null 2>&1 || true
+    mkdir -p "${data_dir}"
+    chown -R "$(id -u):$(id -g)" "${data_dir}" 2>/dev/null || sudo chown -R "$(id -u):$(id -g)" "${data_dir}" 2>/dev/null || true
+    chmod -R u+rwX "${data_dir}" 2>/dev/null || true
+    find "${data_dir}" -mindepth 1 -delete 2>/dev/null || true
+    bench_tar_repo "${root}" | tar -xf - -C "${data_dir}"
+    echo "[bench_reapply_setup] creating agent session dirs"
+    for agent_id in main ingest curate extract critic design spec audit ideate judge reviewer; do
+      mkdir -p "${data_dir}/agents/${agent_id}/sessions"
+    done
+    echo "[bench_reapply_setup] chown ${data_dir} -> 1000:1000"
+    chown -R 1000:1000 "${data_dir}" 2>/dev/null || true
+    echo "[bench_reapply_setup] patching openclaw.json (SecretRef)"
+    bench_patch_openclaw_json_file "${data_dir}/openclaw.json"
+    chown 1000:1000 "${data_dir}/openclaw.json" 2>/dev/null || true
+    echo "[bench_reapply_setup] starting ${container} after host-side staging"
+    bench_container_cli start "${container}" >/dev/null
+    return 0
+  fi
+  bench_ensure_running "${container}" "bench_reapply_setup start"
+  echo "[bench_reapply_setup] copy repo into ${container}:/home/node/.openclaw"
+  bench_container_cli exec "${container}" bash -lc '
+    set -e
+    cd /home/node/.openclaw
+    find . -mindepth 1 -delete 2>/dev/null || true
+  '
+  bench_ensure_running "${container}" "before repo tar extract"
+  bench_tar_repo "${root}" | \
     bench_container_cli exec -i "${container}" tar -xf - -C /home/node/.openclaw
   echo "[bench_reapply_setup] creating agent session dirs"
   bench_container_cli exec "${container}" bash -lc '
@@ -287,10 +392,14 @@ defaults["sandbox"] = {"mode": "off"}
 defaults["elevatedDefault"] = "full"
 tools = data.setdefault("tools", {})
 tools.setdefault("exec", {})["mode"] = "full"
+# Disable file-tool workspace confinement so sub-agents can write outside their
+# own workspace root (see docker-branch patch for rationale).
+tools.setdefault("fs", {})["workspaceOnly"] = False
 p.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 print(f"patched models.providers.{_provider}.apiKey -> SecretRef(LLM_API_KEY)")
 print("patched agents.defaults.sandbox.mode -> off")
 print("patched agents.defaults.elevatedDefault -> full")
+print("patched tools.fs.workspaceOnly -> false")
 print("patched tools.exec.mode -> full (no-approval)")
 '
   bench_container_cli exec "${container}" chown 1000:1000 /home/node/.openclaw/openclaw.json
@@ -432,7 +541,7 @@ fi
 log "copy repo into ${CONTAINER}:/home/node/.openclaw"
 bench_reapply_setup "${CONTAINER}"
 log "repo copied into container"
-log "SecretRef patch applied via bench_reapply_setup (no restart)"
+log "SecretRef patch applied via bench_reapply_setup"
 
 # 5. Wait for the openclaw container to start and the gateway to become ready.
 bench_wait_ready "${CONTAINER}"
@@ -467,6 +576,9 @@ EOF
   declare -f bench_logs_tail
   declare -f bench_is_running
   declare -f bench_running_state
+  declare -f bench_ensure_running
+  declare -f bench_patch_openclaw_json_file
+  declare -f bench_tar_repo
   declare -f bench_runtime_up
   declare -f bench_reapply_setup
   declare -f bench_wait_ready

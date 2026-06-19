@@ -6,8 +6,24 @@ Generic driver for any benchmark directory that follows the unified interface
 
 **CI policy: every benchmark task calls only the `main` agent.** The main agent is
 responsible for deciding how to handle each task, including delegating to the
-appropriate sub-agent via `sessions_spawn` when needed. The separate CI scoring
-step may directly invoke the dedicated `reviewer` agent for `judge: "agent"`.
+appropriate sub-agent via `sessions_spawn` when needed.
+
+Each QA uses the PRD three-step flow (deterministic, independent of how `main`
+chooses to wait for its sub-agents):
+
+  1. ``openclaw agent --message <QA>`` delivers the question. ``main`` is free to
+     yield / spawn / sleep — we no longer append a sleep-wait suffix and no longer
+     rely on the CLI staying blocked.
+  2. A **watcher** polls ``openclaw tasks --json`` for the run's tasks:
+       * any task ``timed_out``  → abort the whole benchmark immediately;
+       * all tasks ``succeeded`` → the run is complete.
+  3. ``openclaw logs --expect-final --json`` yields the agent's true final
+     delivered answer; its ``message`` field is what we judge.
+
+The CI scoring step (``judge: "agent"``) fires the dedicated ``judge`` agent as a
+standalone ``openclaw agent --agent judge --local`` subprocess (separate from the
+send→watch→logs flow — judges never spawn sub-agents) and parses its CLI reply
+straight into a 0..1 score; see :func:`_run_judge`.
 
 Per-benchmark `metrics.py` becomes a 6-line shim:
 
@@ -31,9 +47,9 @@ from pathlib import Path
 # Allow `python3 -m` and direct invocation both.
 if __package__ in (None, ""):
     sys.path.insert(0, str(Path(__file__).resolve().parent))
-    from judge import judge_with_agent, judge_with_rules  # noqa: E402
+    from judge import judge_parse, judge_prompt, judge_with_rules, JudgeScoreParseError  # noqa: E402
 else:
-    from .judge import judge_with_agent, judge_with_rules  # noqa: E402
+    from .judge import judge_parse, judge_prompt, judge_with_rules, JudgeScoreParseError  # noqa: E402
 
 ROOT = Path(__file__).resolve().parent.parent.parent
 
@@ -455,6 +471,28 @@ def _extract_qa_sessions(container: str, session_key: str,
     return extracted
 
 
+# ---------------------------------------------------------------------------
+# Answer-QA execution: send → watch tasks → collect final via logs (see PRD)
+# ---------------------------------------------------------------------------
+#
+# The old single-phase synchronous approach appended a "sleep-wait" suffix to
+# every QA so the `openclaw agent` CLI stayed blocked until every spawned
+# sub-agent returned. That was fragile: when main yielded early
+# (sessions_yield right after sessions_spawn) the CLI returned a short interim
+# and the sub-agent deliverable never reached the judge.
+#
+# The PRD flow is deterministic regardless of how main waits:
+#   1. `openclaw agent --message <QA>` delivers the question (no sleep suffix).
+#   2. A watcher polls `openclaw tasks --json` — all-succeeded → done, any
+#      timed_out → abort the benchmark.
+#   3. `openclaw logs --expect-final --json` → its `message` is the final answer.
+#
+# The `judge` agent is called as its own standalone subprocess
+# (`openclaw agent --agent judge --local`), decoupled from this send→watch→logs
+# flow, with a number-only prompt whose reply is parsed straight into a score;
+# see `_run_judge`.
+
+
 def repair_container_permissions(container: str) -> None:
     """Make benchmark-created runtime files writable by OpenClaw's node user.
 
@@ -516,65 +554,49 @@ def load_qa(path: Path) -> list[dict]:
     return qas
 
 
-def run_agent(container: str, agent_id: str, qa: dict, run_id: str,
-              model: str | None, debug_dir: Path | None = None) -> tuple[str, str, dict]:
-    """Invoke `agent_id` (pinned to `main` by CI contract) with the QA prompt.
+def _run_agent_once(container: str, agent_id: str, prompt: str, session_key: str,
+                    model: str | None = None, timeout: int = 180,
+                    debug_dir: Path | None = None, debug_prefix: str = "") -> dict:
+    """One synchronous ``openclaw agent`` call via the gateway.
 
-    Returns (cleaned_agent_text, session_key, raw_artifacts). The third
-    tuple element is a dict with the unredacted raw stdout / stderr / prompt
-    / cmd, useful for BENCH_DEBUG=1 dumps and for future re-runs.
-    With --json, openclaw writes the structured reply to stdout and all
-    diagnostics to stderr, so we capture them separately and only look at
-    the JSON payload[].text fields for the actual agent answer.
+    Routed through the gateway (NOT ``--local`` embedded) so the run is tracked
+    as a durable task: the PRD task-watcher in :func:`run_agent` polls
+    ``openclaw tasks`` for it, and ``openclaw logs --expect-final`` can read its
+    final answer. Embedded ``--local`` runs do not register tasks, which would
+    leave the watcher with nothing to observe.
+
+    Blocks until the agent's turn ends, so a single-turn agent (e.g. ``judge``)
+    returns its reply directly in the CLI stdout. For the answer QA, main may end
+    its turn early (before spawned sub-agents finish); the watcher +
+    ``logs --expect-final`` handle that. Bounded by ``timeout`` (passed to
+    openclaw as ``--timeout``) plus a 30s subprocess grace; a hung agent is
+    killed and flagged ``timed_out`` so the run continues.
     """
-    prompt = qa["question"]
-    if qa.get("input_material"):
-        material = qa["input_material"]
-        if isinstance(material, dict):
-            material = material.get("content") or Path(material["path"]).read_text(encoding="utf-8")
-        prompt = f"{material}\n\n---\n\n{prompt}"
-    # Use a never-reused key so every QA starts from an empty conversation.
-    # OpenClaw documents --session-key as the explicit session selector; there
-    # is no separate "new session" flag for `openclaw agent`, so freshness comes
-    # from making the key unique per QA attempt.
-    session_key = f"agent:{agent_id}:bench-{run_id}-{qa['qa_id']}-{uuid.uuid4().hex}"
-    # Propagate the LLM provider credentials into the container. Without
-    # these the embedded openclaw agent cannot reach the model.
     cmd = _container_exec_cmd(
         container, "openclaw", "agent",
-        "--agent", agent_id, "--message", prompt, "--json", "--local",
+        "--agent", agent_id, "--message", prompt, "--json",
         "--session-key", session_key,
-        "--timeout", str(qa.get("timeout_seconds", 1800)),
+        "--timeout", str(timeout),
         interactive=True,
         env=["LLM_API_KEY", "LLM_BASE_URL"],
     )
-    if model:
-        cmd += ["--model", model]
-    # Per-QA wall-clock cap. The QA may set `timeout_seconds` (per-call budget
-    # for the embedded openclaw agent) and `wall_clock_seconds` (overall cap
-    # for the docker exec cycle). The cap protects CI from a single hung
-    # test blocking the whole run: when the cap fires we set timed_out=True
-    # so downstream code can short-circuit judging and mark the QA failed.
-    timeout = int(qa.get("timeout_seconds", 1800))
-    wall_clock_cap = int(qa.get("wall_clock_seconds",
-                                int(os.environ.get("BENCH_MAX_QA_WALL_CLOCK", max(timeout + 120, 600)))))
+    # NOTE: we deliberately do NOT pass --model here. env_setup.sh patches the
+    # gateway's configured default model to LLM_MODEL, so the agent already runs
+    # on the intended model. Passing --model makes the gateway treat it as a
+    # per-call *override*, which it gates behind the agent's model allow-list —
+    # and that check is flaky ("Model override ... is not allowed for agent
+    # main"). Embedded --local used to bypass it; gateway mode does not.
+    _ = model  # accepted for API stability; the gateway default is used instead.
     timed_out = False
     try:
-        proc = subprocess.run(cmd, capture_output=True, text=True,
-                              timeout=wall_clock_cap)
-        stdout = proc.stdout or ""
-        stderr = proc.stderr or ""
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout + 30)
+        stdout, stderr = proc.stdout or "", proc.stderr or ""
         returncode = proc.returncode
     except subprocess.TimeoutExpired as e:
-        # The docker exec itself hung past the wall-clock cap. Kill the
-        # container-side process (best-effort) so the next QA can start on a
-        # healthy container, then preserve whatever partial output we got.
-        print(f"[{qa['qa_id']}] wall-clock cap hit after {wall_clock_cap}s; "
-              f"killing docker exec and marking QA timed_out",
-              file=sys.stderr)
+        print(f"[agent] {session_key}: wall-clock cap hit after {timeout + 30}s; "
+              f"killing docker exec", file=sys.stderr)
         try:
-            subprocess.run(_container_exec_cmd(container, "pkill", "-f",
-                                                "openclaw agent"),
+            subprocess.run(_container_exec_cmd(container, "pkill", "-f", "openclaw agent"),
                            capture_output=True, timeout=10)
         except Exception:
             pass
@@ -582,38 +604,365 @@ def run_agent(container: str, agent_id: str, qa: dict, run_id: str,
         stderr = e.stderr.decode("utf-8", "replace") if isinstance(e.stderr, (bytes, bytearray)) else (e.stderr or "")
         returncode = -1
         timed_out = True
-    # Per docs.openclaw.ai/tools/agent-send: with --json, the structured
-    # payload (including payloads[].text = the agent's reply) is on stdout;
-    # diagnostics, context-engine warnings, and lane errors all go to stderr.
-    # We deliberately keep them separate and only return the agent text.
-    agent_text = _extract_agent_text(stdout, stderr)
-    raw = {
-        "cmd": cmd,
-        "prompt": prompt,
-        "stdout": stdout,
-        "stderr": stderr,
-        "returncode": returncode,
-        "timed_out": timed_out,
-        "session_key": session_key,
-        "agent_text": agent_text,
-    }
+    if debug_dir is not None:
+        _debug_write(debug_dir / f"{debug_prefix}01_cmd.json",
+                     json.dumps(cmd, ensure_ascii=False, indent=2))
+        _debug_write(debug_dir / f"{debug_prefix}02_stdout.txt", stdout)
+        _debug_write(debug_dir / f"{debug_prefix}03_stderr.txt", stderr)
+    return {"cmd": cmd, "stdout": stdout, "stderr": stderr,
+            "returncode": returncode, "timed_out": timed_out,
+            "session_key": session_key}
+
+
+def _build_qa_prompt(qa: dict) -> str:
+    """Build the prompt for a QA (material prefix + question). No sleep suffix."""
+    prompt = qa["question"]
+    if qa.get("input_material"):
+        material = qa["input_material"]
+        if isinstance(material, dict):
+            material = material.get("content") or Path(material["path"]).read_text(encoding="utf-8")
+        prompt = f"{material}\n\n---\n\n{prompt}"
+    return prompt
+
+
+# Terminal task statuses in the openclaw task store.
+_TERMINAL_STATUSES = ("succeeded", "failed", "timed_out", "cancelled", "lost")
+
+# Seconds between task-store polls while watching a run.
+_POLL_INTERVAL = 5
+
+
+class BenchmarkTimedOut(Exception):
+    """A task in the watched run hit ``timed_out`` — abort the whole benchmark."""
+
+
+def _openclaw_json(container: str, args: list[str], timeout: int = 30) -> object | None:
+    """Run ``openclaw <args>`` in *container* and parse its JSON stdout.
+
+    Returns the parsed object, or None on failure (non-zero / unparseable / error).
+    """
+    cmd = _container_exec_cmd(container, "openclaw", *args, interactive=True)
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True, timeout=timeout)
+    except (subprocess.TimeoutExpired, OSError) as exc:
+        print(f"[tasks] openclaw {' '.join(args)} failed: {exc}", file=sys.stderr)
+        return None
+    if proc.returncode != 0 or not proc.stdout.strip():
+        if proc.stderr.strip():
+            print(f"[tasks] openclaw {' '.join(args)} stderr: {proc.stderr.strip()[:300]}",
+                  file=sys.stderr)
+        return None
+    try:
+        return json.loads(proc.stdout)
+    except json.JSONDecodeError:
+        return None
+
+
+def _snapshot_run_ids(container: str) -> set[str]:
+    """Return every runId currently in the task store."""
+    data = _openclaw_json(container, ["tasks", "--json"])
+    if not isinstance(data, dict):
+        return set()
+    return {t.get("runId") for t in data.get("tasks", []) if t.get("runId")}
+
+
+def _discover_run_id(container: str, before: set[str]) -> str | None:
+    """Return the runId created since *before* (the QA we just sent).
+
+    In a sequential benchmark the only new run is ours; if several appear we
+    pick the first. Returns None if discovery fails (caller degrades to a
+    logs-only wait).
+    """
+    data = _openclaw_json(container, ["tasks", "--json"])
+    if not isinstance(data, dict):
+        return None
+    for task in data.get("tasks", []):
+        rid = task.get("runId")
+        if rid and rid not in before:
+            return rid
+    return None
+
+
+def _run_task_statuses(container: str, run_id: str) -> list[str]:
+    """Status of every task belonging to *run_id* (empty if unknown)."""
+    data = _openclaw_json(container, ["tasks", "--json"])
+    if not isinstance(data, dict):
+        return []
+    return [t.get("status", "") for t in data.get("tasks", [])
+            if t.get("runId") == run_id]
+
+
+# Console-output patterns that look like a top-level log line (type=log, no
+# subsystem) but are NOT the agent's reply — they're emitted by the openclaw
+# CLI/runtime via console.log and end up in the file-log tail alongside real
+# agent output. The "last non-subsystem log line" heuristic gets fooled by
+# whichever of these happens to land at the bottom of the 250 KB tail window;
+# in CI run 27686228379/job 81885739532, QA-006 picked up
+# "Registered plugin command: /voice (plugin: talk-voice)" instead of the
+# 4253-char idea-cards reply that came earlier.
+_LOG_NOISE_PREFIXES = (
+    "Registered plugin command:",  # plugin manifest registration on CLI boot
+    "[tools] read failed",         # filesystem-tool diagnostic
+    "tools: read failed",          # same diagnostic, alternative format
+    "[plugins] ",                  # generic plugin lifecycle messages
+    "[context-engine] ",           # context-engine plugin diagnostics
+)
+
+
+def _is_log_noise(message: str) -> bool:
+    """True if *message* matches a known non-agent-reply console.log noise pattern.
+
+    Used by :func:`_extract_final_from_logs` to skip CLI/plugin diagnostics
+    that share the same JSON shape as a real agent reply (``type=log``, no
+    ``subsystem``) but are not the agent's final answer.
+    """
+    stripped = message.lstrip()
+    return any(stripped.startswith(p) for p in _LOG_NOISE_PREFIXES)
+
+
+def _extract_final_from_logs(stdout: str) -> str:
+    """Pull the agent's final answer out of ``openclaw logs --json`` stdout.
+
+    The stream interleaves the real reply with gateway internals and CLI
+    console output:
+
+      * ``{"type":"log", "subsystem":"gateway/ws", "message":"{\\"subsystem\\":...} ..."}``
+        — gateway/websocket diagnostics (the bulk of the output);
+      * ``{"type":"meta", ...}``  — a header line (file/cursor/size);
+      * ``{"type":"notice", "message":"Log tail truncated (increase --max-bytes)."}``
+        — appended when the tail exceeded ``--max-bytes``.
+      * ``{"type":"log", ...}`` with no ``subsystem`` and a ``console.log``
+        ``method`` — the agent's textual reply, but ALSO the CLI's plugin
+        registration banner ("Registered plugin command: /pair …") and a
+        handful of tool-failure diagnostics that share the same shape.
+
+    The agent's actual reply is the **last** ``type == "log"`` line that
+    carries no ``subsystem`` and does not match any of the
+    :data:`_LOG_NOISE_PREFIXES` — those are CLI/plugin console output that
+    happens to look like agent text. Returns "" if no usable line is found.
+    """
+    last = ""
+    for line in stdout.splitlines():
+        line = line.strip()
+        if not line.startswith("{"):
+            continue
+        try:
+            evt = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if evt.get("type") != "log":
+            continue
+        if "subsystem" in evt:  # gateway internal (gateway/ws, plugins, …)
+            continue
+        msg = evt.get("message")
+        if not isinstance(msg, str) or not msg.strip():
+            continue
+        if _is_log_noise(msg):
+            continue
+        last = msg
+    return last
+
+
+def _collect_final_via_logs(container: str, timeout_ms: int = 120_000,
+                            debug_dir: Path | None = None) -> str:
+    """Read the agent's final delivered answer via ``openclaw logs --expect-final``.
+
+    Called after the task watcher confirms the run completed (PRD step 3).
+    ``--expect-final`` waits for the agent's final response; we then parse the
+    emitted JSON log lines with :func:`_extract_final_from_logs` to recover the
+    real reply (skipping gateway/websocket noise and the truncation footer).
+    Uses the gateway's default ``--limit`` / ``--max-bytes`` — passing values
+    above the gateway schema cap makes the call fail outright. Returns "" if
+    nothing is captured.
+    """
+    cmd = _container_exec_cmd(container, "openclaw", "logs",
+                              "--expect-final", "--json",
+                              "--timeout", str(timeout_ms))
+    try:
+        proc = subprocess.run(cmd, stdin=subprocess.DEVNULL,
+                              capture_output=True, text=True,
+                              timeout=timeout_ms / 1000 + 30)
+    except subprocess.TimeoutExpired:
+        print("[logs] openclaw logs --expect-final hung; returning empty", file=sys.stderr)
+        return ""
+    if debug_dir is not None:
+        _debug_write(debug_dir / "l_01_logs_stdout.txt", proc.stdout or "")
+        _debug_write(debug_dir / "l_02_logs_stderr.txt", proc.stderr or "")
+    return _extract_final_from_logs(proc.stdout or "")
+
+
+def run_agent(container: str, agent_id: str, qa: dict, run_id: str,
+              model: str | None, debug_dir: Path | None = None) -> tuple[str, str, dict]:
+    """Run one benchmark QA via the PRD send→watch→logs flow.
+
+    1. Snapshot existing run ids, then deliver the QA with ``openclaw agent``
+       (no sleep suffix); main may yield early — that is fine.
+    2. Discover the run id created by this QA.
+    3. **Watcher** — poll ``openclaw tasks --json`` for the run's task statuses:
+         * any task terminal-but-not-succeeded (``timed_out`` / ``cancelled`` /
+           ``failed`` / ``lost``) → abort the whole benchmark;
+         * every task ``succeeded`` → the run is complete;
+         * otherwise (``running`` / ``queued`` / …) → keep waiting.
+       There is no wall-clock bailout for a run that is still progressing: we
+       wait until it reaches ``all-succeeded`` or a terminal failure. The only
+       abort here besides a terminal failure is when NO task is ever visible for
+       the run (task store unreachable / discovery failed) for a grace period.
+    4. ``openclaw logs --expect-final --json`` → :func:`_extract_final_from_logs`
+       recovers the agent's final reply (the last ``type:"log"`` line with no
+       ``subsystem``, skipping gateway/ws noise + the truncation footer).
+
+    Returns ``(answer, session_key, raw)``. Raises :class:`BenchmarkTimedOut`
+    if any task in the run ends in a terminal failure, the synchronous *send*
+    itself hangs past budget, or ``logs --expect-final`` fails to produce a
+    final answer (any of these aborts the whole benchmark — there is no
+    fallback to the synchronous send's interim payload).
+    """
+    prompt = _build_qa_prompt(qa)
+    # Unique key per QA attempt so every run starts from an empty conversation.
+    session_key = f"agent:{agent_id}:bench-{run_id}-{qa['qa_id']}-{uuid.uuid4().hex}"
+    timeout = int(qa.get("timeout_seconds", 180))
     if debug_dir is not None:
         _debug_write(debug_dir / "00_prompt.txt", prompt)
-        _debug_write(debug_dir / "01_cmd.json", json.dumps(cmd, ensure_ascii=False, indent=2))
-        _debug_write(debug_dir / "02_stdout.txt", stdout)
-        _debug_write(debug_dir / "03_stderr.txt", stderr)
-        _debug_write(debug_dir / "04_agent_text.txt", agent_text)
-        meta = {
-            "qa_id": qa.get("qa_id"),
-            "session_key": session_key,
-            "returncode": returncode,
-            "timed_out": timed_out,
-            "stdout_bytes": len(stdout.encode("utf-8")),
-            "stderr_bytes": len(stderr.encode("utf-8")),
-            "agent_text_chars": len(agent_text),
-        }
-        _debug_write(debug_dir / "05_meta.json", json.dumps(meta, ensure_ascii=False, indent=2))
-    return (agent_text, session_key, raw)
+
+    # 1. snapshot run ids, then deliver the QA.
+    before_ids = _snapshot_run_ids(container)
+    res = _run_agent_once(container, agent_id, prompt, session_key, model,
+                          timeout=timeout, debug_dir=debug_dir, debug_prefix="s_")
+
+    # 2. identify the run created by this QA.
+    run_id_found = _discover_run_id(container, before_ids)
+    if debug_dir is not None:
+        _debug_write(debug_dir / "s_06_run_id.txt", run_id_found or "(not found)")
+
+    # 3. watcher: wait for all-succeeded, or abort on timed_out / cancelled.
+    #    A hung synchronous send is itself a benchmark abort — we cannot trust
+    #    that the run will ever complete, and we must not silently fall through
+    #    to whatever partial text the CLI managed to print.
+    # Any terminal non-success status (timed_out/cancelled/failed/lost) aborts
+    # the benchmark: the spec lists timed_out/cancelled; failed/lost are the
+    # same category (terminal failure that will never reach all-succeeded) and
+    # must be treated identically or the watcher would hang forever on them.
+    _FAIL_STATUSES = ("timed_out", "cancelled", "failed", "lost")
+    if res.get("timed_out"):
+        raise BenchmarkTimedOut(
+            f"QA {qa.get('qa_id')}: synchronous send hung past "
+            f"{timeout}s budget (run {run_id_found or '?'})")
+    rid = run_id_found
+    no_status_streak = 0
+    # Polls with no visible task before we conclude the store is unreachable.
+    grace_polls = max(1, 120 // max(1, _POLL_INTERVAL))
+    while True:
+        if rid is None:
+            rid = _discover_run_id(container, before_ids)  # may register late
+        statuses = _run_task_statuses(container, rid) if rid else []
+        if statuses:
+            no_status_streak = 0
+            if any(s in _FAIL_STATUSES for s in statuses):
+                bad = sorted({s for s in statuses if s in _FAIL_STATUSES})
+                raise BenchmarkTimedOut(
+                    f"QA {qa.get('qa_id')} run {rid or '?'}: "
+                    f"a task hit {bad}")
+            if all(s == "succeeded" for s in statuses):
+                break
+        else:
+            no_status_streak += 1
+            if no_status_streak >= grace_polls:
+                raise BenchmarkTimedOut(
+                    f"QA {qa.get('qa_id')}: no tasks visible for run "
+                    f"{rid or '?'} after {grace_polls * _POLL_INTERVAL}s — "
+                    f"task store unreachable or run id not found")
+        time.sleep(_POLL_INTERVAL)
+
+    # 4. read the final answer from logs --expect-final (last JSON object).
+    #    Empty answer here is a hard abort: the contract is that every
+    #    succeeded run produces a final-message log line, so an empty result
+    #    means either logs.tail failed (e.g. invalid params) or the run did
+    #    not actually deliver a final answer. Either way we must NOT silently
+    #    substitute the synchronous send's interim payload — that just hides
+    #    a real failure behind whatever stub the agent yielded mid-flight.
+    answer = _collect_final_via_logs(container, timeout_ms=120_000, debug_dir=debug_dir)
+    if not answer:
+        raise BenchmarkTimedOut(
+            f"QA {qa.get('qa_id')} run {run_id_found or '?'}: "
+            f"openclaw logs --expect-final returned no agent reply "
+            f"(see l_01_logs_stdout.txt / l_02_logs_stderr.txt)")
+
+    if debug_dir is not None:
+        _debug_write(debug_dir / "04_agent_text.txt", answer)
+        _debug_write(debug_dir / "05_meta.json", json.dumps({
+            "qa_id": qa.get("qa_id"), "session_key": session_key,
+            "run_id_found": run_id_found,
+            "returncode": res["returncode"], "send_timed_out": res["timed_out"],
+            "answer_chars": len(answer),
+        }, ensure_ascii=False, indent=2))
+
+    raw = {**res, "prompt": prompt, "agent_text": answer,
+           "run_id": run_id_found}
+    return (answer, session_key, raw)
+
+
+# A working judge turn returns a bare 0..1 score in ~8s. The old 600s ceiling was
+# the "agent as judge" timeout point — a single score should never need 10 min, so
+# bound it hard. (Observed in CI run 27690800218: agent-judge calls that succeed
+# finish in seconds; the 600s cap only ever masked a hung/flaky judge.)
+_JUDGE_TIMEOUT = 180
+
+
+def _run_judge(container: str, qa: dict, answer: str, run_id: str,
+               model: str | None, debug_dir: Path | None = None) -> dict:
+    """LLM-judge a candidate *answer* with a standalone, direct call to ``judge``.
+
+    Deliberately decoupled from the main-QA machinery: this does **not** reuse
+    :func:`_run_agent_once` (gateway-routed, task-tracked, watched). The judge is
+    a single-turn scoring call, so it is fired as its own subprocess —
+    ``openclaw agent --agent judge --message <judge_prompt> --local`` — and the
+    CLI's reply is parsed straight into a 0..1 number.
+
+    Why ``--local`` (embedded) and not the gateway: embedded mode skips gateway
+    task registration and the watcher entirely, which is exactly right for a
+    judge that never spawns sub-agents. It also keeps the judge off the gateway's
+    session/heartbeat path that intermittently made it answer ``HEARTBEAT_OK``
+    instead of scoring (CI 27690800218, paper-review-1/s3-cherrypick).
+
+    The prompt mandates a bare numeric score, so the reply is parsed directly as
+    a number (:func:`judge.judge_parse`, ``strict=True``). A non-numeric reply —
+    or a timeout / CLI failure — raises :class:`judge.JudgeScoreParseError`, which
+    the caller records as score 0 rather than silently degrading to rule scoring.
+    """
+    prompt = judge_prompt(qa, answer)
+    session_key = (f"agent:judge:bench-judge-{run_id}-{qa['qa_id']}-"
+                   f"{uuid.uuid4().hex}")
+    cmd = _container_exec_cmd(
+        container, "openclaw", "agent",
+        "--agent", "judge", "--message", prompt,
+        "--json", "--local",
+        "--session-key", session_key,
+        "--timeout", str(_JUDGE_TIMEOUT),
+        interactive=True,
+        env=["LLM_API_KEY", "LLM_BASE_URL"],
+    )
+    # NOTE: we deliberately do NOT pass --model. The judge runs on the configured
+    # default model (LLM_MODEL); a per-call --model override is gated behind the
+    # agent model allow-list and is flaky, so leave it off.
+    _ = model  # accepted for API symmetry with run_agent; unused.
+    try:
+        proc = subprocess.run(cmd, capture_output=True, text=True,
+                              timeout=_JUDGE_TIMEOUT + 30)
+        stdout, stderr = proc.stdout or "", proc.stderr or ""
+    except subprocess.TimeoutExpired:
+        raise JudgeScoreParseError(
+            f"judge agent timed out after {_JUDGE_TIMEOUT}s (run {run_id})")
+    if debug_dir is not None:
+        _debug_write(debug_dir / "j_01_cmd.json",
+                     json.dumps(cmd, ensure_ascii=False, indent=2))
+        _debug_write(debug_dir / "j_02_stdout.txt", stdout)
+        _debug_write(debug_dir / "j_03_stderr.txt", stderr)
+    # The prompt forces a bare number; pull the agent text out of the --json
+    # reply and parse it directly as the score.
+    text = _extract_agent_text(stdout, stderr)
+    if debug_dir is not None:
+        _debug_write(debug_dir / "j_04_judge_text.txt", text)
+    return judge_parse(text, qa, answer, strict=True)
 
 
 # Lines we know are diagnostic noise from openclaw, not the agent's answer.
@@ -853,9 +1202,13 @@ def _text_from_json(data: object) -> str | None:
 
 def main(bench_name: str, agent_id: str | None = None) -> int:
     """Run a benchmark. `agent_id` is the CI-side task caller; the contract forces
-    this to `main`. The main agent decides how to handle each QA (including
-    whether to delegate to sub-agents). The separate CI scoring path may call
-    reviewer directly."""
+    this to `main`. Each QA uses the PRD send→watch→logs flow: the QA is sent to
+    `main` (which may spawn sub-agents internally), a watcher polls
+    `openclaw tasks` until the run is complete or any task hits `timed_out`, and
+    the final answer is read from `openclaw logs --expect-final`. If any task in a
+    run is `timed_out` the benchmark aborts immediately (partial report written).
+    The `judge: "agent"` scoring step uses the dedicated `judge` agent via one
+    synchronous call."""
     qa_path = Path(os.environ.get("BENCH_QA_PATH", ROOT / "benchmarks" / bench_name / "qa.jsonl"))
     report_path = Path(os.environ.get("BENCH_REPORT_PATH",
                                        ROOT / "benchmarks" / bench_name / "bench-report.json"))
@@ -881,34 +1234,48 @@ def main(bench_name: str, agent_id: str | None = None) -> int:
         repair_container_permissions(container)
         qas = load_qa(qa_path)
         results: list[dict] = []
+        aborted: str | None = None
         _debug_banner(bench_name)
         for qa in qas:
             qa_debug_dir = _debug_dir(bench_name, qa["qa_id"])
             _debug_echo("qa_start", f"id={qa['qa_id']} judge={qa.get('judge')}")
             t0 = time.time()
-            answer, session_key, raw = run_agent(container, agent_id, qa, run_id, model,
-                                                  debug_dir=qa_debug_dir)
+            try:
+                answer, session_key, raw = run_agent(container, agent_id, qa, run_id, model,
+                                                      debug_dir=qa_debug_dir)
+            except BenchmarkTimedOut as exc:
+                # PRD: any task `timed_out` → abort the whole benchmark. Record
+                # this QA as failed, write the partial report, and stop.
+                elapsed = time.time() - t0
+                print(f"[{bench_name}] ABORT (timed_out): {exc} — "
+                      f"stopping benchmark per PRD.", file=sys.stderr)
+                results.append({
+                    "qa_id": qa["qa_id"], "task_type": qa.get("task_type"),
+                    "weight": qa.get("weight", 1.0), "score": 0.0, "pass": False,
+                    "rationale": f"aborted: a task hit timed_out ({exc})",
+                    "elapsed_seconds": round(elapsed, 1),
+                    "session_key": "", "raw_output": "",
+                })
+                aborted = "timed_out"
+                break
             elapsed = time.time() - t0
             mode = qa.get("judge", "rules")
-            if raw.get("timed_out"):
-                # Wall-clock cap fired. Skip scoring entirely and mark the QA
-                # failed so the benchmark continues with the remaining tests
-                # instead of stalling on a hung judge.
-                verdict = {
-                    "score": 0.0,
-                    "pass": False,
-                    "rationale": (
-                        f"timed out after {elapsed:.0f}s (wall-clock cap); "
-                        f"agent did not produce a reply within the budget"
-                    ),
-                }
+            if mode == "agent":
+                # Direct synchronous call to the dedicated `judge` agent; the
+                # number-only prompt + strict parse raises JudgeScoreParseError
+                # on any non-numeric reply. Surface that as an explicit failed
+                # QA (score 0) rather than silently degrading to rule scoring.
+                try:
+                    verdict = _run_judge(container, qa, answer, run_id, model,
+                                         debug_dir=qa_debug_dir)
+                except JudgeScoreParseError as jexc:
+                    verdict = {
+                        "score": 0.0,
+                        "pass": False,
+                        "rationale": f"judge did not return a numeric score: {jexc}",
+                    }
             else:
-                # LLM judge directly invokes the dedicated reviewer agent. The
-                # main-agent-only policy above applies to each benchmark task, not
-                # to this separate CI scoring step.
-                verdict = (judge_with_agent(qa, answer, agent_id="reviewer", model=model,
-                                            container=container)
-                           if mode == "agent" else judge_with_rules(answer, qa))
+                verdict = judge_with_rules(answer, qa)
             # Dump judge artifacts when DEBUG is on.
             if qa_debug_dir is not None:
                 _debug_write(qa_debug_dir / "06_verdict.json", json.dumps(verdict, ensure_ascii=False, indent=2))
@@ -976,6 +1343,8 @@ def main(bench_name: str, agent_id: str | None = None) -> int:
             "pass_rate": passed / len(results) if results else 0.0,
             "avg_score": round(weighted, 4), "results": results,
         }
+        if aborted:
+            report["aborted"] = aborted
     if DEBUG:
         report["debug"] = {
             "mode": "BENCH_DEBUG=1",

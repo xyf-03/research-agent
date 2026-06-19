@@ -63,7 +63,7 @@
     },
     "timeout_seconds": {
       "type": "integer",
-      "default": 1800,
+      "default": 180,
       "minimum": 60,
       "maximum": 7200,
       "description": "Per-QA wall-clock budget passed to the embedded openclaw agent as `--timeout`. A separate, larger wall-clock cap protects the harness itself (see wall_clock_seconds)."

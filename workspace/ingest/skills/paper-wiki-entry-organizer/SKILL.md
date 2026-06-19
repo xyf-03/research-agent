@@ -26,6 +26,10 @@ description: Paper PDF ingestion workflow for the Ingest agent. Convert a PDF in
 - `target_domain`: 论文所属领域子树
 - `evidence_level`: 基于 PDF 访问程度（默认：全文提取成功则为 full-paper）
 
+## Final Reply / 调用者交付
+
+最终 reply 必须直接返回调用者要求的完整内容本体；文件、wiki 写入、日志或路径不能替代 reply。不要只回复“已完成”“已写入”“见路径”“NO_REPLY”。如果本 skill 生成 Markdown 文档、idea cards、报告、评分或任务提示词，必须在 reply 中内联输出完整正文。
+
 ## 输出
 
 - raw/sources/ 下的规范命名 PDF 和提取全文

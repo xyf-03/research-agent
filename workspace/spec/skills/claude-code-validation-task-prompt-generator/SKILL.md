@@ -36,6 +36,10 @@ description: 将验证实验设计翻译成可直接发给 claude-code 的最小
 
 如果验证实验设计中没有明确优先级，提示 claude-code 优先选择：最小改动、最容易控制变量、最直接对应核心问题、最容易保存和比较结果的实验。
 
+## Final Reply / 调用者交付
+
+最终 reply 必须直接返回调用者要求的完整内容本体；文件、wiki 写入、日志或路径不能替代 reply。不要只回复“已完成”“已写入”“见路径”“NO_REPLY”。如果本 skill 生成 Markdown 文档、idea cards、报告、评分或任务提示词，必须在 reply 中内联输出完整正文。
+
 ## 输出
 
 标题必须为 `# 发给 claude-code 的完整任务提示词` 的完整 Markdown 文档，包含：
